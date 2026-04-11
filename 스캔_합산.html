@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>스캔 합산 — Steady Every Wear</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#f2f0eb;--surface:#f8f7f4;--surface2:#eceae4;--border:#d4d0c8;--text:#1c1a16;--muted:#7a766c;--accent:#6d28d9;--accent-dim:#ede9fe;--ok:#15803d;--warn:#b45309;--err:#b91c1c;--r:4px;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;}
+header{background:var(--surface);border-top:3px solid var(--accent);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:10;}
+.brand{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;color:var(--accent);font-weight:600;}
+.sep{width:1px;height:20px;background:var(--border);}
+.header-sub{font-size:12px;color:var(--muted);}
+.header-right{margin-left:auto;display:flex;gap:8px;align-items:center;}
+.stat-pill{display:flex;align-items:center;gap:5px;padding:3px 10px;background:var(--surface2);border-radius:20px;font-size:11px;font-family:'JetBrains Mono',monospace;border:1px solid var(--border);}
+.dot{width:6px;height:6px;border-radius:50%;}.dot-ok{background:var(--ok);}.dot-err{background:var(--err);}.dot-warn{background:var(--warn);}
+.page{max-width:1080px;margin:0 auto;padding:28px 24px 60px;}
+.upload-grid{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:14px;margin-bottom:24px;}
+.upload-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;transition:border-color .2s;}
+.upload-card.loaded{border-left:3px solid var(--accent);}
+.card-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;}
+.card-badge{width:30px;height:30px;border-radius:50%;flex-shrink:0;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;transition:all .2s;}
+.card-title{font-size:13px;font-weight:600;margin-bottom:2px;}.card-desc{font-size:11px;color:var(--muted);line-height:1.5;}
+.drop-zone{border:1.5px dashed var(--border);border-radius:var(--r);padding:18px 12px;text-align:center;cursor:pointer;position:relative;transition:all .2s;background:var(--surface2);}
+.drop-zone:hover,.drop-zone.over{border-color:var(--accent);background:var(--surface);}
+.drop-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+.dz-label{font-size:12px;color:var(--muted);}.dz-hint{font-size:10px;color:var(--muted);opacity:.7;margin-top:3px;font-family:'JetBrains Mono',monospace;}
+.file-info{display:none;margin-top:10px;background:var(--surface2);border-radius:var(--r);padding:8px 10px;font-size:11px;font-family:'JetBrains Mono',monospace;}
+.file-info.show{display:block;}.fi-name{font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;}
+.fi-stats{color:var(--muted);}.fi-stats b{color:var(--ok);}
+.run-bar{text-align:center;margin-bottom:28px;}
+.btn-run{padding:12px 44px;background:var(--accent);color:#fff;border:none;border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;cursor:pointer;transition:opacity .15s;letter-spacing:.06em;text-transform:uppercase;}
+.btn-run:hover{opacity:.88;}.btn-run:disabled{opacity:.3;cursor:not-allowed;}
+.run-note{font-size:12px;color:var(--muted);margin-top:8px;}
+.summary-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:22px;}
+.sum-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px 14px 12px;}
+.sum-label{font-size:9px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;}
+.sum-val{font-size:22px;font-weight:600;font-family:'JetBrains Mono',monospace;}
+.sum-val.ok{color:var(--ok);}.sum-val.err{color:var(--err);}.sum-val.warn{color:var(--warn);}.sum-val.dim{color:var(--muted);}
+.result-section{display:none;}.result-section.show{display:block;}
+.tabs-wrap{display:flex;border-bottom:1px solid var(--border);}
+.tab{padding:9px 14px;font-size:12px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s;display:flex;align-items:center;gap:5px;white-space:nowrap;}
+.tab:hover{color:var(--text);}.tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:500;}
+.tab-cnt{background:var(--surface2);padding:1px 6px;border-radius:10px;font-size:10px;font-family:'JetBrains Mono',monospace;}
+.tab.active .tab-cnt{background:var(--accent);color:#fff;}
+.table-area{background:var(--surface);border:1px solid var(--border);border-top:none;border-radius:0 0 4px 4px;margin-bottom:14px;}
+.table-toolbar{padding:9px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;background:var(--surface2);}
+.search-wrap{flex:1;position:relative;}
+.s-ico{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px;pointer-events:none;}
+.search-input{width:100%;padding:6px 9px 6px 28px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px;outline:none;}
+.search-input:focus{border-color:var(--accent);}
+.btn-xl{padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:var(--r);font-size:11px;font-weight:600;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:.04em;}
+.btn-xl:hover{opacity:.88;}
+.btn-csv{padding:6px 12px;background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:var(--r);font-size:11px;cursor:pointer;transition:all .15s;}
+.btn-csv:hover{border-color:var(--text);color:var(--text);}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+thead th{text-align:left;padding:9px 12px;font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);font-weight:500;background:var(--surface);white-space:nowrap;}
+th.r{text-align:right;}
+tbody tr{border-bottom:1px solid var(--surface2);transition:background .1s;}
+tbody tr:last-child{border-bottom:none;}
+tbody tr:hover{background:var(--surface2);}
+td{padding:10px 12px;vertical-align:middle;}
+.td-name{font-weight:500;}.td-size{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);}
+.td-r{text-align:right;font-family:'JetBrains Mono',monospace;font-size:12px;}
+.split-col{font-size:11px;font-family:'JetBrains Mono',monospace;text-align:right;}
+.c-ok{color:var(--ok);font-weight:600;}.c-err{color:var(--err);font-weight:600;}.c-warn{color:var(--warn);font-weight:600;}.c-dim{color:var(--muted);}
+.a-val{color:#6d28d9;}.b-val{color:#0369a1;}
+.sbadge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace;white-space:nowrap;}
+.s-ok{background:rgba(21,128,61,.1);color:var(--ok);}.s-over{background:rgba(180,83,9,.1);color:var(--warn);}
+.s-short{background:rgba(185,28,28,.1);color:var(--err);}.s-extra{background:rgba(109,40,217,.1);color:var(--accent);}
+.s-pend{background:var(--surface2);color:var(--muted);}
+.empty{padding:44px;text-align:center;color:var(--muted);font-size:13px;}
+.unknown-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);}
+.unknown-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:12px;font-weight:500;}
+.unknown-body{padding:12px 16px;display:flex;flex-wrap:wrap;gap:6px;}
+.barcode-chip{padding:3px 10px;background:rgba(185,28,28,.08);border:1px solid rgba(185,28,28,.2);border-radius:20px;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--err);}
+.barcode-chip .src{font-size:9px;color:var(--muted);margin-left:4px;}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(12px);background:var(--surface2);border:1px solid var(--border);padding:8px 16px;border-radius:20px;font-size:12px;opacity:0;transition:all .25s;z-index:999;pointer-events:none;white-space:nowrap;}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">Steady Every Wear</div>
+  <div class="sep"></div>
+  <div class="header-sub">스캔 합산</div>
+  <div class="header-right">
+    <div class="stat-pill"><div class="dot" style="background:#6d28d9"></div>A <span id="hScanA">0</span>개</div>
+    <div class="stat-pill"><div class="dot" style="background:#0369a1"></div>B <span id="hScanB">0</span>개</div>
+    <div class="stat-pill"><div class="dot dot-ok"></div>합산 <span id="hTotal">0</span>개</div>
+  </div>
+</header>
+
+<div class="page">
+  <div class="upload-grid">
+    <div class="upload-card" id="card-order">
+      <div class="card-top">
+        <div class="card-badge" id="badge-order">발주</div>
+        <div><div class="card-title">이지어드민 발주 DB</div><div class="card-desc">이지어드민에서 내보낸 발주 데이터<br>pack_data*.xls 또는 엑셀 양식</div></div>
+      </div>
+      <div class="drop-zone" id="dz-order">
+        <input type="file" accept=".xls,.xlsx,.xlsm,.csv" onchange="loadOrderFile(this.files[0])">
+        <div class="dz-label">📋 파일 선택 또는 드래그</div>
+        <div class="dz-hint">.xls · .xlsx · .csv</div>
+      </div>
+      <div class="file-info" id="fi-order"><div class="fi-name" id="fn-order"></div><div class="fi-stats" id="fs-order"></div></div>
+    </div>
+    <div class="upload-card" id="card-a">
+      <div class="card-top">
+        <div class="card-badge" id="badge-a" style="color:#6d28d9">A</div>
+        <div><div class="card-title">컴퓨터 A 스캔</div><div class="card-desc">발주검수 앱 →<br>합산용 내보내기 (.json)</div></div>
+      </div>
+      <div class="drop-zone" id="dz-a">
+        <input type="file" accept=".json" onchange="loadScanFile('a',this.files[0])">
+        <div class="dz-label">📥 파일 선택 또는 드래그</div>
+        <div class="dz-hint">스캔데이터_날짜.json</div>
+      </div>
+      <div class="file-info" id="fi-a"><div class="fi-name" id="fn-a"></div><div class="fi-stats" id="fs-a"></div></div>
+    </div>
+    <div class="upload-card" id="card-b">
+      <div class="card-top">
+        <div class="card-badge" id="badge-b" style="color:#0369a1">B</div>
+        <div><div class="card-title">컴퓨터 B 스캔</div><div class="card-desc">발주검수 앱 →<br>합산용 내보내기 (.json)</div></div>
+      </div>
+      <div class="drop-zone" id="dz-b">
+        <input type="file" accept=".json" onchange="loadScanFile('b',this.files[0])">
+        <div class="dz-label">📥 파일 선택 또는 드래그</div>
+        <div class="dz-hint">스캔데이터_날짜.json</div>
+      </div>
+      <div class="file-info" id="fi-b"><div class="fi-name" id="fn-b"></div><div class="fi-stats" id="fs-b"></div></div>
+    </div>
+  </div>
+
+  <div class="run-bar">
+    <button class="btn-run" id="btnRun" onclick="runMerge()" disabled>합산 실행</button>
+    <div class="run-note" id="runNote">발주 파일과 스캔 파일을 올려주세요</div>
+  </div>
+
+  <div class="result-section" id="resultSection">
+    <div class="summary-grid">
+      <div class="sum-card"><div class="sum-label">발주 품목</div><div class="sum-val dim" id="sTotal">0</div></div>
+      <div class="sum-card"><div class="sum-label">완료</div><div class="sum-val ok" id="sOk">0</div></div>
+      <div class="sum-card"><div class="sum-label">부족</div><div class="sum-val err" id="sShort">0</div></div>
+      <div class="sum-card"><div class="sum-label">초과</div><div class="sum-val warn" id="sOver">0</div></div>
+      <div class="sum-card"><div class="sum-label">미발주 스캔</div><div class="sum-val warn" id="sExtra">0</div></div>
+      <div class="sum-card"><div class="sum-label">미스캔</div><div class="sum-val dim" id="sPend">0</div></div>
+    </div>
+    <div class="tabs-wrap">
+      <div class="tab active" onclick="switchTab('all')" id="tab-all">전체 <span class="tab-cnt" id="cnt-all">0</span></div>
+      <div class="tab" onclick="switchTab('short')" id="tab-short">부족 <span class="tab-cnt" id="cnt-short">0</span></div>
+      <div class="tab" onclick="switchTab('over')" id="tab-over">초과 <span class="tab-cnt" id="cnt-over">0</span></div>
+      <div class="tab" onclick="switchTab('ok')" id="tab-ok">완료 <span class="tab-cnt" id="cnt-ok">0</span></div>
+      <div class="tab" onclick="switchTab('extra')" id="tab-extra">미발주 스캔 <span class="tab-cnt" id="cnt-extra">0</span></div>
+      <div class="tab" onclick="switchTab('pend')" id="tab-pend">미스캔 <span class="tab-cnt" id="cnt-pend">0</span></div>
+    </div>
+    <div class="table-area">
+      <div class="table-toolbar">
+        <div class="search-wrap"><span class="s-ico">&#128269;</span><input type="text" class="search-input" id="searchInput" placeholder="상품명 검색..." oninput="renderTable()"></div>
+        <button class="btn-csv" onclick="exportCSV()">CSV</button>
+        <button class="btn-xl" onclick="exportXLSX()">XLSX 내보내기</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:40%">상품명</th><th>사이즈</th>
+            <th class="r">발주</th><th class="r">합산</th>
+            <th class="r" style="color:#6d28d9">A</th><th class="r" style="color:#0369a1">B</th>
+            <th class="r">차이</th><th>상태</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+      <div class="empty" id="emptyState" style="display:none">표시할 항목이 없습니다</div>
+    </div>
+    <div class="unknown-section" id="unknownSection" style="display:none">
+      <div class="unknown-header">
+        <span style="color:var(--err);font-family:'JetBrains Mono',monospace;font-size:11px">✕</span>
+        미등록 바코드 <span id="unknownCount" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)"></span>
+      </div>
+      <div class="unknown-body" id="unknownBody"></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+let orderMap={},scanA={},scanB={},unknownA=[],unknownB=[];
+let mergedRows=[],currentTab='all';
+let orderLoaded=false,scanALoaded=false,scanBLoaded=false;
+
+function parseHtmlTable(html){
+  const rows=[];
+  html=html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi,'').replace(/<style[^>]*>[\s\S]*?<\/style>/gi,'');
+  for(const tr of(html.match(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)||[])){
+    const cells=[];
+    for(const td of(tr.match(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)||[])){
+      let t=td.replace(/<[^>]+>/g,'').trim();
+      t=t.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ').replace(/&#39;/g,"'").replace(/&quot;/g,'"');
+      cells.push(t);
+    }
+    if(cells.length) rows.push(cells);
+  }
+  return rows;
+}
+function headerRow(rows){return(rows[0]||[]).map(c=>String(c).trim());}
+function dataRows(rows){return rows.slice(1).filter(r=>r.some(c=>String(c).trim()));}
+function autoCol(headers,kws){const e=headers.findIndex(h=>kws.includes(h));if(e>=0)return e;return headers.findIndex(h=>kws.some(k=>h.toLowerCase().includes(k.toLowerCase())));}
+
+function loadOrderFile(file){
+  if(!file) return;
+  const ext=file.name.split('.').pop().toLowerCase();
+  if(ext==='csv'){const r=new FileReader();r.onload=e=>parseOrderRows(e.target.result.split('\n').map(row=>row.split(',').map(c=>c.replace(/^"|"$/g,'').trim())),file.name);r.readAsText(file,'UTF-8');}
+  else if(ext==='xls'){const r=new FileReader();r.onload=e=>{const t=e.target.result;if(t.trimStart().startsWith('<')||t.includes('<table')||t.includes('<html'))parseOrderRows(parseHtmlTable(t),file.name);};r.readAsText(file,'UTF-8');}
+  else{const r=new FileReader();r.onload=e=>{const wb=XLSX.read(e.target.result,{type:'array'});const sn=wb.SheetNames.find(n=>['발주','order','sheet1'].some(k=>n.toLowerCase().includes(k)))||wb.SheetNames[0];parseOrderRows(XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''}),file.name);};r.readAsArrayBuffer(file);}
+}
+
+function parseOrderRows(rows,fileName){
+  orderMap={};
+  const headers=headerRow(rows);
+  const isPackFmt=headers.includes('실제 상품명')&&headers.includes('실제 옵션')&&headers.includes('판매개수');
+  if(isPackFmt){
+    const iName=headers.indexOf('실제 상품명'),iOpt=headers.indexOf('실제 옵션'),iQty=headers.indexOf('판매개수'),iNRaw=headers.indexOf('상품명');
+    for(const r of dataRows(rows)){
+      const name=String(r[iName]||''). trim(),qty=parseInt(r[iQty])||0;
+      if(!name||qty<=0) continue;
+      let size='';
+      const optRaw=String(r[iOpt]||''). trim();
+      const m=optRaw.match(/<옵션명>(.+?)(?:<|$)/);
+      if(m){size=m[1].trim().replace(/\.0$/,'');}
+      else if(iNRaw>=0){const nRaw=String(r[iNRaw]||''). trim();if(nRaw.startsWith(name)){size=nRaw.slice(name.length).trim().replace(/\.0$/,'');}else{const ms=nRaw.match(/^(.+?)\s+(\S+)$/);if(ms)size=ms[2];}}
+      if(!size){const ms2=optRaw.replace(/<[^>]+>/g,'').trim().match(/(\S+)$/);if(ms2)size=ms2[1].replace(/\.0$/,'');}
+      const key=name+'::'+( size||'F');
+      orderMap[key]=(orderMap[key]||0)+qty;
+    }
+  } else {
+    const nm=autoCol(headers,['상품명','품명','name']),sz=autoCol(headers,['사이즈','size','옵션']),qt=autoCol(headers,['개수','수량','qty','갯수','판매개수']);
+    for(const r of dataRows(rows)){
+      let name=String(r[nm]||''). trim(),size=sz>=0?String(r[sz]||''). trim().replace(/\.0$/,''):'',qty=parseInt(r[qt])||0;
+      if(!name||qty<=0) continue;
+      if(!size){const ms=name.match(/^(.+?)\s+(\S+)$/);if(ms&&/^[0-9A-Za-z]+$/.test(ms[2])){name=ms[1].trim();size=ms[2];}}
+      const key=name+'::'+( size||'F');
+      orderMap[key]=(orderMap[key]||0)+qty;
+    }
+  }
+  const count=Object.keys(orderMap).length,qty=Object.values(orderMap).reduce((a,b)=>a+b,0);
+  orderLoaded=count>0;
+  const b=document.getElementById('badge-order');if(orderLoaded){b.style.background='var(--accent)';b.style.color='#fff';b.style.borderColor='var(--accent)';}
+  document.getElementById('card-order').classList.toggle('loaded',orderLoaded);
+  document.getElementById('fi-order').classList.add('show');
+  document.getElementById('fn-order').textContent=fileName;
+  document.getElementById('fs-order').innerHTML=`<b>${count}개</b> 품목 · <b>${qty}</b>개 수량`;
+  checkReady();showToast(`발주 ${count}개 품목 로드됨`);
+}
+
+function loadScanFile(side,file){
+  if(!file) return;
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const data=JSON.parse(e.target.result);
+      if(!data.scanMap) throw new Error();
+      if(side==='a'){scanA=data.scanMap;unknownA=data.unknownBarcodes||[];scanALoaded=true;}
+      else{scanB=data.scanMap;unknownB=data.unknownBarcodes||[];scanBLoaded=true;}
+      const total=Object.values(data.scanMap).reduce((a,b)=>a+b,0),items=Object.keys(data.scanMap).length;
+      const ac=side==='a'?'#6d28d9':'#0369a1';
+      document.getElementById(`card-${side}`).classList.add('loaded');
+      const badge=document.getElementById(`badge-${side}`);badge.style.background=ac;badge.style.color='#fff';badge.style.borderColor=ac;
+      document.getElementById(`fi-${side}`).classList.add('show');
+      document.getElementById(`fn-${side}`).textContent=file.name;
+      document.getElementById(`fs-${side}`).innerHTML=`<b>${items}개</b> 품목 · <b>${total}회</b> 스캔`;
+      checkReady();showToast(`${side.toUpperCase()} 스캔 ${items}개 품목 로드됨`);
+    } catch{showToast('올바른 합산용 파일이 아닙니다');}
+  };
+  r.readAsText(file,'UTF-8');
+}
+
+function checkReady(){
+  const hasScan=scanALoaded||scanBLoaded,ready=orderLoaded&&hasScan;
+  document.getElementById('btnRun').disabled=!ready;
+  if(!orderLoaded) document.getElementById('runNote').textContent='발주 파일을 먼저 올려주세요';
+  else if(!hasScan) document.getElementById('runNote').textContent='스캔 파일 (A 또는 B)을 올려주세요';
+  else if(scanALoaded&&!scanBLoaded) document.getElementById('runNote').textContent='A만 합산 — B를 추가하면 함께 합산됩니다';
+  else if(!scanALoaded&&scanBLoaded) document.getElementById('runNote').textContent='B만 합산 — A를 추가하면 함께 합산됩니다';
+  else document.getElementById('runNote').textContent='두 파일 모두 준비됐습니다';
+}
+
+['order','a','b'].forEach(id=>{
+  const dz=document.getElementById(`dz-${id}`);
+  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('over');});
+  dz.addEventListener('dragleave',()=>dz.classList.remove('over'));
+  dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('over');const f=e.dataTransfer.files[0];if(!f)return;if(id==='order')loadOrderFile(f);else loadScanFile(id,f);});
+});
+
+function runMerge(){
+  const merged={};
+  for(const key of new Set([...Object.keys(scanA),...Object.keys(scanB)]))
+    merged[key]=(scanA[key]||0)+(scanB[key]||0);
+  mergedRows=[];
+  for(const[key,ordered]of Object.entries(orderMap)){
+    const[name,size]=key.split('::'),scanned=merged[key]||0;
+    const status=scanned===0?'pend':scanned===ordered?'ok':scanned>ordered?'over':'short';
+    mergedRows.push({name,size,ordered,scanned,fromA:scanA[key]||0,fromB:scanB[key]||0,status});
+  }
+  for(const[key,scanned]of Object.entries(merged)){
+    if(orderMap[key]!==undefined) continue;
+    const[name,size]=key.split('::');
+    mergedRows.push({name,size,ordered:0,scanned,fromA:scanA[key]||0,fromB:scanB[key]||0,status:'extra'});
+  }
+  const ord={short:0,over:1,ok:2,extra:3,pend:4};
+  const sizeOrd=v=>{const n=parseFloat(v);return isNaN(n)?999:n;};
+  mergedRows.sort((a,b)=>ord[a.status]-ord[b.status]||a.name.localeCompare(b.name)||sizeOrd(a.size)-sizeOrd(b.size));
+  const allUnknown={};
+  for(const bc of unknownA)allUnknown[bc]=(allUnknown[bc]||[]).concat('A');
+  for(const bc of unknownB)allUnknown[bc]=(allUnknown[bc]||[]).concat('B');
+  const ukEl=document.getElementById('unknownSection');
+  if(Object.keys(allUnknown).length>0){
+    ukEl.style.display='block';
+    document.getElementById('unknownCount').textContent=`${Object.keys(allUnknown).length}개`;
+    document.getElementById('unknownBody').innerHTML=Object.entries(allUnknown).map(([bc,srcs])=>`<div class="barcode-chip">${bc}<span class="src">${srcs.join('·')}</span></div>`).join('');
+  } else ukEl.style.display='none';
+  document.getElementById('resultSection').classList.add('show');
+  renderSummary();renderTable();
+  document.getElementById('resultSection').scrollIntoView({behavior:'smooth',block:'start'});
+  showToast(`합산 완료 — ${mergedRows.length}개 품목`);
+}
+
+function renderSummary(){
+  const cnt=s=>mergedRows.filter(r=>r.status===s).length;
+  const ok=cnt('ok'),short=cnt('short'),over=cnt('over'),extra=cnt('extra'),pend=cnt('pend');
+  const total=mergedRows.filter(r=>r.status!=='extra').length;
+  document.getElementById('sTotal').textContent=total;document.getElementById('sOk').textContent=ok;
+  document.getElementById('sShort').textContent=short;document.getElementById('sOver').textContent=over;
+  document.getElementById('sExtra').textContent=extra;document.getElementById('sPend').textContent=pend;
+  const totalA=Object.values(scanA).reduce((a,b)=>a+b,0);
+  const totalB=Object.values(scanB).reduce((a,b)=>a+b,0);
+  document.getElementById('hScanA').textContent=totalA;
+  document.getElementById('hScanB').textContent=totalB;
+  document.getElementById('hTotal').textContent=totalA+totalB;
+}
+
+function switchTab(tab){
+  currentTab=tab;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+tab).classList.add('active');
+  renderTable();
+}
+
+function renderTable(){
+  const q=document.getElementById('searchInput').value.toLowerCase();
+  const counts={all:mergedRows.length,short:0,over:0,ok:0,extra:0,pend:0};
+  for(const r of mergedRows)counts[r.status]++;
+  for(const k of Object.keys(counts)){const el=document.getElementById('cnt-'+k);if(el)el.textContent=counts[k];}
+  const filtered=mergedRows.filter(r=>{if(q&&!r.name.toLowerCase().includes(q))return false;if(currentTab!=='all')return r.status===currentTab;return true;});
+  const tbody=document.getElementById('tableBody'),empty=document.getElementById('emptyState');
+  if(!filtered.length){tbody.innerHTML='';empty.style.display='block';return;}
+  empty.style.display='none';
+  const bm={ok:['s-ok','✓ 완료'],over:['s-over','↑ 초과'],short:['s-short','↓ 부족'],extra:['s-extra','★ 미발주'],pend:['s-pend','· 미스캔']};
+  const showBoth=scanALoaded&&scanBLoaded;
+  tbody.innerHTML=filtered.map(r=>{
+    const diff=r.scanned-r.ordered,diffTxt=r.status==='extra'?'—':diff>0?`+${diff}`:String(diff);
+    const diffCls=diff>0?'c-warn':diff<0?'c-err':'c-ok';
+    const[bc,bl]=bm[r.status];
+    const aVal=showBoth?`<span class="a-val">${r.fromA}</span>`:`<span class="c-dim">—</span>`;
+    const bVal=showBoth?`<span class="b-val">${r.fromB}</span>`:`<span class="c-dim">—</span>`;
+    return `<tr><td class="td-name">${r.name}</td><td class="td-size">${r.size||'F'}</td><td class="td-r c-dim">${r.ordered}</td><td class="td-r ${r.scanned>0?'c-ok':''}">${r.scanned}</td><td class="td-r">${aVal}</td><td class="td-r">${bVal}</td><td class="td-r"><span class="${diffCls}">${diffTxt}</span></td><td><span class="sbadge ${bc}">${bl}</span></td></tr>`;
+  }).join('');
+}
+
+function todayStr(){return new Date().toLocaleDateString('ko-KR').replace(/\.\s*/g,'-').replace(/-$/,'');}
+
+function exportCSV(){
+  const sm={ok:'완료',over:'초과',short:'부족',extra:'미발주',pend:'미스캔'};
+  const csv=[['상품명','사이즈','발주','합산스캔','A스캔','B스캔','차이','상태'].join(','),
+    ...mergedRows.map(r=>[`"${r.name}"`,r.size||'F',r.ordered,r.scanned,r.fromA,r.fromB,r.scanned-r.ordered,sm[r.status]||'']. join(','))
+  ].join('\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=`합산결과_${todayStr()}.csv`;a.click();URL.revokeObjectURL(url);
+  showToast('CSV 내보내기 완료');
+}
+
+function exportXLSX(){
+  const wb=XLSX.utils.book_new();
+  const sm={ok:'완료',over:'초과',short:'부족',extra:'미발주',pend:'미스캔'};
+  const all=[['상품명','사이즈','발주','합산스캔','A스캔','B스캔','차이','상태'],
+    ...mergedRows.map(r=>[r.name,r.size||'F',r.ordered,r.scanned,r.fromA,r.fromB,r.scanned-r.ordered,sm[r.status]||''])];
+  const ws=XLSX.utils.aoa_to_sheet(all);
+  ws['!cols']=[{wch:36},{wch:6},{wch:6},{wch:8},{wch:6},{wch:6},{wch:6},{wch:8}];
+  XLSX.utils.book_append_sheet(wb,ws,'합산결과');
+  for(const[key,label]of[['short','부족'],['over','초과'],['extra','미발주스캔'],['pend','미스캔']]){
+    const rows=mergedRows.filter(r=>r.status===key);if(!rows.length)continue;
+    const data=[['상품명','사이즈','발주','합산스캔','A스캔','B스캔','차이'],...rows.map(r=>[r.name,r.size||'F',r.ordered,r.scanned,r.fromA,r.fromB,r.scanned-r.ordered])];
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(data),label);
+  }
+  XLSX.writeFile(wb,`합산결과_${todayStr()}.xlsx`);showToast('XLSX 내보내기 완료');
+}
+
+let _t;
+function showToast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(_t);_t=setTimeout(()=>el.classList.remove('show'),2200);}
+</script>
+</body>
+</html>
