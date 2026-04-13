@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>전표 처리 — Steady Every Wear</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --bg: #f2f0eb;
+  --surface: #f8f7f4;
+  --surface2: #eceae4;
+  --surface3: #e2dfd8;
+  --border: #d4d0c8;
+  --text: #1c1a16;
+  --muted: #7a766c;
+  --accent: #3730a3;
+  --accent-dim: #c7d2fe;
+  --ok: #15803d;
+  --warn: #b45309;
+  --err: #b91c1c;
+  --info: #1d4ed8;
+  --r: 4px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Noto Sans KR', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; }
+
+/* ── SETUP ── */
+#setupScreen {
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; padding: 40px 20px; gap: 0;
+}
+.setup-brand { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.22em; color: var(--accent); text-transform: uppercase; margin-bottom: 14px; font-weight: 600; }
+.setup-title { font-family: 'JetBrains Mono', monospace; font-size: 24px; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.01em; color: var(--text); }
+.setup-subtitle { font-size: 13px; color: var(--muted); margin-bottom: 44px; }
+.setup-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 100%; max-width: 780px; margin-bottom: 32px; }
+.setup-card { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 24px; position: relative; transition: border-color 0.2s; }
+.setup-card.loaded { border-color: var(--accent); border-left: 3px solid var(--accent); }
+.card-status { position: absolute; top: 18px; right: 18px; font-size: 10px; font-family: 'JetBrains Mono', monospace; padding: 2px 8px; border-radius: 12px; }
+.card-status.ok { background: rgba(76,175,120,0.15); color: var(--ok); }
+.card-status.wait { background: var(--surface2); color: var(--muted); }
+.card-icon { font-size: 26px; margin-bottom: 10px; }
+.card-label { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
+.card-title { font-size: 15px; font-weight: 600; margin-bottom: 5px; }
+.card-desc { font-size: 12px; color: var(--muted); line-height: 1.6; margin-bottom: 16px; }
+.card-format { background: var(--surface2); border-radius: 6px; padding: 9px 12px; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); line-height: 1.8; margin-bottom: 16px; }
+.card-format strong { color: var(--accent); }
+.file-loaded-name { font-size: 11px; color: var(--ok); font-family: 'JetBrains Mono', monospace; margin-bottom: 8px; display: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drop-zone-setup { border: 1.5px dashed var(--border); border-radius: var(--r); padding: 18px; text-align: center; cursor: pointer; position: relative; transition: all 0.2s; }
+.drop-zone-setup:hover, .drop-zone-setup.over { border-color: var(--accent); background: rgba(200,184,154,0.04); }
+.drop-zone-setup input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.dz-text { font-size: 12px; color: var(--muted); }
+.preview-mini { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 8px; min-height: 16px; }
+.setup-start-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.btn-start { padding: 12px 36px; background: var(--accent); color: #fff; border: none; border-radius: 3px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; letter-spacing: 0.06em; text-transform: uppercase; }
+.btn-start:hover { opacity: 0.88; }
+.setup-note { font-size: 12px; color: var(--muted); }
+
+/* ── MAIN APP ── */
+#appScreen { display: none; flex-direction: column; height: 100vh; }
+header {
+  background: var(--surface); border-top: 3px solid var(--accent); border-bottom: 1px solid var(--border);
+  padding: 0 20px; display: flex; align-items: center; gap: 14px;
+  height: 52px; flex-shrink: 0;
+}
+.brand { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; color: var(--accent); font-weight: 600; white-space: nowrap; }
+.header-sep { width: 1px; height: 20px; background: var(--border); }
+.file-badges { display: flex; gap: 8px; }
+.file-badge { font-size: 10px; font-family: 'JetBrains Mono', monospace; padding: 2px 9px; border-radius: 10px; background: var(--surface2); color: var(--muted); white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; }
+.file-badge:hover { border-color: var(--accent-dim); color: var(--accent); }
+.file-badge.ok { color: var(--ok); }
+.header-right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+.stat-pill { display: flex; align-items: center; gap: 5px; padding: 3px 9px; background: var(--surface2); border-radius: 20px; font-size: 11px; font-family: 'JetBrains Mono', monospace; }
+.dot { width: 6px; height: 6px; border-radius: 50%; }
+.dot-ok { background: var(--ok); }
+.dot-err { background: var(--err); }
+.dot-warn { background: var(--warn); }
+
+/* Layout */
+.layout { display: grid; grid-template-columns: 340px 1fr; flex: 1; min-height: 0; }
+
+/* Left panel */
+.panel-left { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.panel-title { padding: 12px 18px 10px; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.cnt-badge { background: var(--accent); color: #fff; padding: 1px 6px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+.scan-area { padding: 16px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.scan-wrap { position: relative; }
+.scan-ico { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+#barcodeInput { width: 100%; padding: 11px 11px 11px 34px; background: var(--bg); border: 1.5px solid var(--border); border-radius: var(--r); color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 14px; outline: none; transition: border-color 0.2s; }
+#barcodeInput:focus { border-color: var(--accent-dim); }
+#barcodeInput.flash-ok { animation: flashOk 0.4s; }
+#barcodeInput.flash-err { animation: flashErr 0.4s; }
+#barcodeInput.flash-warn { animation: flashWarn 0.4s; }
+@keyframes flashOk { 0%,100%{border-color:var(--border)} 50%{border-color:var(--ok);box-shadow:0 0 0 2px rgba(76,175,120,0.2)} }
+@keyframes flashErr { 0%,100%{border-color:var(--border)} 50%{border-color:var(--err);box-shadow:0 0 0 2px rgba(232,92,76,0.2)} }
+@keyframes flashWarn { 0%,100%{border-color:var(--border)} 50%{border-color:var(--warn);box-shadow:0 0 0 2px rgba(232,168,76,0.2)} }
+.scan-hint { margin-top: 7px; font-size: 11px; color: var(--muted); }
+
+.last-result { padding: 12px 18px; border-bottom: 1px solid var(--border); min-height: 66px; display: flex; align-items: center; flex-shrink: 0; }
+.result-empty { color: var(--muted); font-size: 12px; }
+.result-card { width: 100%; padding: 10px 13px; border-radius: var(--r); border: 1px solid; display: flex; flex-direction: column; gap: 3px; }
+.result-card.ok { border-color: var(--ok); background: rgba(76,175,120,0.07); }
+.result-card.warn { border-color: var(--warn); background: rgba(232,168,76,0.07); }
+.result-card.err { border-color: var(--err); background: rgba(232,92,76,0.07); }
+.result-status { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.result-card.ok .result-status { color: var(--ok); }
+.result-card.warn .result-status { color: var(--warn); }
+.result-card.err .result-status { color: var(--err); }
+.result-name { font-size: 13px; font-weight: 500; }
+.result-meta { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+.log-header { padding: 10px 18px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.log-label { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.btn-sm { padding: 3px 9px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; transition: all 0.15s; }
+.btn-sm:hover { border-color: var(--err); color: var(--err); }
+#scanLog { flex: 1; overflow-y: auto; padding: 0 6px 6px; }
+#scanLog::-webkit-scrollbar { width: 3px; }
+#scanLog::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.log-item { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; border-radius: 6px; margin-bottom: 1px; animation: logIn 0.18s ease; transition: background 0.12s; }
+.log-item:hover { background: var(--surface2); }
+@keyframes logIn { from { opacity:0; transform:translateX(-6px); } to { opacity:1; transform:none; } }
+.log-num { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); min-width: 22px; padding-top: 2px; }
+.log-dot { width: 7px; height: 7px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+.log-body { flex: 1; min-width: 0; }
+.log-name { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-meta { font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+.btn-undo { padding: 2px 6px; border-radius: 3px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 10px; cursor: pointer; opacity: 0; transition: opacity 0.12s; }
+.log-item:hover .btn-undo { opacity: 1; }
+.btn-undo:hover { border-color: var(--warn); color: var(--warn); }
+
+/* Right panel */
+.panel-right { display: flex; flex-direction: column; overflow: hidden; }
+.tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 18px; background: var(--surface); gap: 2px; flex-shrink: 0; }
+.tab { padding: 13px 14px 12px; cursor: pointer; font-size: 12px; color: var(--muted); border-bottom: 2px solid transparent; transition: all 0.15s; display: flex; align-items: center; gap: 5px; margin-bottom: -1px; white-space: nowrap; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-cnt { background: var(--surface2); padding: 1px 6px; border-radius: 10px; font-size: 10px; font-family: 'JetBrains Mono', monospace; }
+.tab.active .tab-cnt { background: var(--accent); color: #fff; }
+
+.toolbar { padding: 10px 18px; display: flex; gap: 8px; align-items: center; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+.search-wrap { flex: 1; position: relative; }
+.s-ico { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 13px; }
+.search-input { width: 100%; padding: 7px 10px 7px 30px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; outline: none; font-family: 'Noto Sans KR', sans-serif; }
+.search-input:focus { border-color: var(--accent-dim); }
+.btn-export { padding: 7px 13px; background: var(--accent); color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: opacity 0.15s; }
+.btn-export:hover { opacity: 0.85; }
+.btn-export-xlsx { padding: 7px 13px; background: transparent; border: 1px solid var(--ok); color: var(--ok); border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.15s; }
+.btn-export-xlsx:hover { background: rgba(76,175,120,0.1); }
+
+.table-wrap { flex: 1; overflow-y: auto; padding: 14px 18px; }
+.table-wrap::-webkit-scrollbar { width: 4px; }
+.table-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th { text-align: left; padding: 7px 10px; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); font-weight: 500; position: sticky; top: 0; background: var(--bg); white-space: nowrap; }
+tbody tr { border-bottom: 1px solid rgba(46,46,46,0.5); transition: background 0.1s; }
+tbody tr:hover { background: var(--surface); }
+td { padding: 9px 10px; vertical-align: middle; }
+.td-code { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--accent); }
+.td-name { font-weight: 500; }
+.td-size { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
+.td-qty { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; text-align: right; }
+.c-ok { color: var(--ok); }
+.c-warn { color: var(--warn); }
+.c-err { color: var(--err); }
+.sbadge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; letter-spacing: 0.05em; font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
+.sbadge-ok { background: rgba(76,175,120,0.12); color: var(--ok); }
+.sbadge-fail { background: rgba(232,92,76,0.12); color: var(--err); }
+
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; color: var(--muted); gap: 8px; }
+.empty-ico { font-size: 36px; opacity: 0.25; }
+
+.summary-bar { padding: 10px 18px; border-top: 1px solid var(--border); background: var(--surface); display: flex; gap: 18px; align-items: center; font-size: 12px; flex-shrink: 0; }
+.sum-item { display: flex; align-items: center; gap: 5px; font-family: 'JetBrains Mono', monospace; }
+.sum-label { color: var(--muted); font-size: 10px; }
+.sum-val { font-weight: 600; font-size: 12px; }
+.progress-wrap { flex: 1; }
+.progress-bar { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.4s ease; }
+.prog-label { font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 3px; }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 300; backdrop-filter: blur(4px); animation: fadeIn 0.18s ease; }
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 26px; width: 460px; max-width: 92vw; animation: slideUp 0.2s ease; }
+@keyframes slideUp { from{transform:translateY(12px);opacity:0} to{transform:none;opacity:1} }
+.modal-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.modal-sub { font-size: 12px; color: var(--muted); margin-bottom: 18px; line-height: 1.5; }
+.drop-zone { border: 1.5px dashed var(--border); border-radius: var(--r); padding: 26px 16px; text-align: center; cursor: pointer; position: relative; transition: all 0.2s; }
+.drop-zone:hover, .drop-zone.over { border-color: var(--accent); background: rgba(200,184,154,0.04); }
+.drop-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.modal-actions { display: flex; gap: 8px; margin-top: 18px; justify-content: flex-end; }
+.btn-cancel { padding: 7px 14px; border: 1px solid var(--border); background: transparent; color: var(--muted); border-radius: 6px; font-size: 13px; cursor: pointer; }
+.btn-cancel:hover { color: var(--text); border-color: var(--text); }
+
+/* Toast */
+#toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(12px); background: var(--surface2); border: 1px solid var(--border); padding: 8px 16px; border-radius: 20px; font-size: 12px; opacity: 0; transition: all 0.25s; z-index: 999; pointer-events: none; white-space: nowrap; }
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- ══════ SETUP ══════ -->
+<div id="setupScreen">
+  <div class="setup-brand">Steady Every Wear</div>
+  <div class="setup-title">전표 처리 시스템</div>
+  <div class="setup-subtitle">두 파일 모두 선택 사항입니다 — 필요한 파일만 올리고 시작하세요</div>
+
+  <div class="setup-cards">
+    <!-- Card 1: 상품정보 (바코드 DB) -->
+    <div class="setup-card" id="card-products">
+      <div class="card-status wait" id="status-products">대기</div>
+      <div class="card-icon">🗂</div>
+      <div class="card-label">페이히어 재고 DB</div>
+      <div class="card-title">상품정보_*.xlsx</div>
+      <div class="card-desc">바코드 → 상품명·사이즈 매핑<br>없으면 바코드 그대로 기록됩니다.</div>
+      <div class="card-format"><strong>바코드</strong> · <strong>상품명</strong> · 옵션_사이즈 컬럼 자동 인식</div>
+      <div class="file-loaded-name" id="fname-products"></div>
+      <div class="drop-zone-setup" id="dz-products">
+        <input type="file" accept=".xlsx,.xlsm,.xls,.csv" onchange="handleProductFile(this.files[0])">
+        <div class="dz-text">📂 파일 선택 또는 드래그</div>
+      </div>
+      <div class="preview-mini" id="prev-products"></div>
+    </div>
+
+    
+    <!-- Card 2: 현재고조회 (상품코드 DB) -->
+    <div class="setup-card" id="card-codes">
+      <div class="card-status wait" id="status-codes">대기</div>
+      <div class="card-icon">🔢</div>
+      <div class="card-label">이지어드민 재고 DB</div>
+      <div class="card-title">현재고조회_*.xls</div>
+      <div class="card-desc">상품명 → 상품코드 매핑<br>없으면 전표처리 출력이 불가합니다.</div>
+      <div class="card-format"><strong>상품코드</strong> · <strong>상품명</strong> 컬럼 자동 인식<br>.xls (HTML 형식) 지원</div>
+      <div class="file-loaded-name" id="fname-codes"></div>
+      <div class="drop-zone-setup" id="dz-codes">
+        <input type="file" accept=".xlsx,.xlsm,.xls,.csv" onchange="handleCodesFile(this.files[0])">
+        <div class="dz-text">📂 파일 선택 또는 드래그</div>
+      </div>
+      <div class="preview-mini" id="prev-codes"></div>
+    </div>
+
+  </div>
+
+  <div class="setup-start-wrap">
+    <button class="btn-start" onclick="startApp()">전표 처리 시작</button>
+    <div class="setup-note" id="setupNote">파일 없이도 시작할 수 있습니다</div>
+  </div>
+</div>
+
+<!-- ══════ MAIN APP ══════ -->
+<div id="appScreen">
+  <header>
+    <div class="brand">SEW · 전표처리</div>
+    <div class="header-sep"></div>
+    <div class="file-badges">
+      <div class="file-badge" id="badge-products" onclick="openModal('products')">🗂 <span id="badge-products-name">미로드</span></div>
+      <div class="file-badge" id="badge-codes" onclick="openModal('codes')">🔢 <span id="badge-codes-name">미로드</span></div>
+    </div>
+    <div class="header-right">
+      <div class="stat-pill"><div class="dot dot-ok"></div><span id="hMatched">0</span> 매칭</div>
+      <div class="stat-pill"><div class="dot dot-err"></div><span id="hFailed">0</span> 미매칭</div>
+      <div class="stat-pill"><div class="dot dot-warn"></div><span id="hUnknown">0</span> 미등록</div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- LEFT: Scanner -->
+    <div class="panel-left">
+      <div class="panel-title">스캔 <div class="cnt-badge" id="scanCount">0</div></div>
+      <div class="scan-area">
+        <div class="scan-wrap">
+          <span class="scan-ico">⬛</span>
+          <input type="text" id="barcodeInput" placeholder="바코드 스캔 또는 입력..." autocomplete="off" spellcheck="false">
+        </div>
+        <div class="scan-hint">스캐너 연결 후 스캔하거나 직접 입력 → Enter</div>
+      </div>
+      <div class="last-result" id="lastResult">
+        <div class="result-empty">스캔 대기 중...</div>
+      </div>
+      <div class="log-header">
+        <div class="log-label">스캔 로그</div>
+        <button class="btn-sm" onclick="clearAll()">초기화</button>
+      </div>
+      <div id="scanLog"></div>
+    </div>
+
+    <!-- RIGHT: Results -->
+    <div class="panel-right">
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('matched')" id="tab-matched">전표처리 목록 <span class="tab-cnt" id="cnt-matched">0</span></div>
+        <div class="tab" onclick="switchTab('failed')" id="tab-failed">매칭 실패 <span class="tab-cnt" id="cnt-failed">0</span></div>
+        <div class="tab" onclick="switchTab('unknown')" id="tab-unknown">미등록 바코드 <span class="tab-cnt" id="cnt-unknown">0</span></div>
+      </div>
+      <div class="toolbar">
+        <div class="search-wrap">
+          <span class="s-ico">🔍</span>
+          <input type="text" class="search-input" id="searchInput" placeholder="상품명 검색..." oninput="renderTable()">
+        </div>
+        <button class="btn-export-xlsx" onclick="exportXLSX()">전표 XLSX</button>
+        <button class="btn-export" onclick="exportCSV()">CSV</button>
+      </div>
+      <div class="table-wrap">
+        <table id="mainTable">
+          <thead id="tableHead"></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+        <div class="empty-state" id="emptyState" style="display:none">
+          <div class="empty-ico">📋</div>
+          <div style="font-size:14px;color:var(--muted)">스캔하면 여기에 표시됩니다</div>
+        </div>
+      </div>
+      <div class="summary-bar">
+        <div class="sum-item"><span class="sum-label">총 스캔</span><span class="sum-val" id="sumScan">0</span></div>
+        <div class="sum-item"><span class="sum-label">품목</span><span class="sum-val" id="sumItems">0</span></div>
+        <div class="sum-item"><span class="sum-label">매칭</span><span class="sum-val c-ok" id="sumMatched">0</span></div>
+        <div class="sum-item"><span class="sum-label">미매칭</span><span class="sum-val c-err" id="sumFailed">0</span></div>
+        <div class="progress-wrap">
+          <div class="progress-bar"><div class="progress-fill" id="progFill" style="width:0%"></div></div>
+          <div class="prog-label" id="progLabel">매칭 0%</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 파일 업데이트 모달 -->
+<div class="modal-overlay" id="updateModal" style="display:none" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-title" id="modalTitle">파일 업데이트</div>
+    <div class="modal-sub" id="modalSub"></div>
+    <div class="drop-zone" id="modalDZ">
+      <input type="file" id="modalFile" accept=".xlsx,.xlsm,.xls,.csv" onchange="handleModalFile(this.files[0])">
+      <div style="font-size:28px;opacity:0.4;margin-bottom:8px">📂</div>
+      <div style="font-size:13px;color:var(--muted)">파일을 드래그하거나 클릭하여 선택</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">.xlsx · .xlsm · .xls · .csv</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">닫기</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════
+let barcodeMap  = {};  // barcode -> { name, size, price }
+let codeMap     = {};  // "상품명 사이즈" -> 상품코드
+let scanLog     = [];  // [{ barcode, name, size, code, matched, unknown, ts }]
+let currentTab  = 'matched';
+
+let productFileName = '';
+let codesFileName   = '';
+let productFileRaw  = null;
+let codesFileRaw    = null;
+let modalMode       = null;
+
+// ══════════════════════════════════════════
+//  FILE READING
+// ══════════════════════════════════════════
+function readFile(file, cb) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'csv') {
+    const reader = new FileReader();
+    reader.onload = e => cb(csvToRows(e.target.result), null);
+    reader.readAsText(file, 'UTF-8');
+  } else if (ext === 'xls') {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const text = e.target.result;
+      if (text.trimStart().startsWith('<') || text.includes('<table') || text.includes('<html')) {
+        cb(parseHtmlTable(text), null);
+      } else {
+        try {
+          const wb = XLSX.read(new TextEncoder().encode(text).buffer, { type: 'array' });
+          const sn = wb.SheetNames[0];
+          cb(XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '' }), sn);
+        } catch(e) { showToast('파일을 읽을 수 없습니다'); }
+      }
+    };
+    reader.readAsText(file, 'UTF-8');
+  } else {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const sn = wb.SheetNames[0];
+      cb(XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '' }), sn);
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+function parseHtmlTable(html) {
+  const rows = [];
+  html = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  const trMatches = html.match(/<tr[^>]*>([\s\S]*?)<\/tr>/gi) || [];
+  for (const tr of trMatches) {
+    const cells = [];
+    const tdMatches = tr.match(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi) || [];
+    for (const td of tdMatches) {
+      let text = td.replace(/<[^>]+>/g, '').trim();
+      text = text.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ').replace(/&#39;/g,"'").replace(/&quot;/g,'"');
+      cells.push(text);
+    }
+    if (cells.length) rows.push(cells);
+  }
+  return rows;
+}
+
+function csvToRows(text) {
+  return text.split('\n').map(r => r.split(',').map(c => c.replace(/^"|"$/g,'').trim()));
+}
+
+function headerRow(rows) { return (rows[0] || []).map(c => String(c).trim()); }
+function dataRows(rows)  { return rows.slice(1).filter(r => r.some(c => String(c).trim())); }
+
+function autoColIdx(headers, keywords) {
+  const exact = headers.findIndex(h => keywords.includes(h));
+  if (exact >= 0) return exact;
+  return headers.findIndex(h => keywords.some(k => h.toLowerCase().includes(k.toLowerCase())));
+}
+
+// ══════════════════════════════════════════
+//  SETUP: PRODUCT FILE (바코드 DB)
+// ══════════════════════════════════════════
+function handleProductFile(file) {
+  if (!file) return;
+  productFileName = file.name;
+  readFile(file, (rows, sheet) => {
+    productFileRaw = rows;
+    buildProductMap();
+    const count = Object.keys(barcodeMap).length;
+    document.getElementById('fname-products').style.display = 'block';
+    document.getElementById('fname-products').textContent = '✓ ' + file.name;
+    document.getElementById('prev-products').textContent = `${count}개 바코드 인식됨`;
+    const ok = count > 0;
+    document.getElementById('status-products').textContent = ok ? '✓ 준비됨' : '⚠ 확인 필요';
+    document.getElementById('status-products').className = 'card-status ' + (ok ? 'ok' : 'wait');
+    document.getElementById('card-products').className = 'setup-card ' + (ok ? 'loaded' : '');
+    updateSetupNote();
+  });
+}
+
+function buildProductMap() {
+  barcodeMap = {};
+  if (!productFileRaw) return;
+  const headers = headerRow(productFileRaw);
+  const bc = autoColIdx(headers, ['바코드', 'barcode']);
+  const nm = autoColIdx(headers, ['상품명', '품명', 'name']);
+  const pr = autoColIdx(headers, ['판매가', 'price']);
+  // 사이즈 컬럼 — 색상/컬러/인솔 제외
+  const sizeColIdxs = headers
+    .map((h, i) => ({ h, i }))
+    .filter(({ h }) => h.startsWith('옵션_') && !h.includes('색상') && !h.includes('컬러') && !h.includes('인솔'))
+    .map(({ i }) => i);
+  // 색상 컬럼 — 옵션_색상, 옵션_컬러
+  const colorColIdxs = headers
+    .map((h, i) => ({ h, i }))
+    .filter(({ h }) => h.includes('색상') || h.includes('컬러'))
+    .map(({ i }) => i);
+  for (const r of dataRows(productFileRaw)) {
+    const barcode = String(r[bc] || '').trim();
+    if (!barcode || !/^\d+$/.test(barcode)) continue;
+    const rawName = String(r[nm] || '').trim();
+    // 색상 컬럼 값 추출
+    let color = '';
+    for (const idx of colorColIdxs) {
+      const val = String(r[idx] || '').trim();
+      if (val) { color = val; break; }
+    }
+    // 상품명에 괄호(색상)가 없고 색상 컬럼에 값이 있으면 합침
+    let name = rawName;
+    if (color && !rawName.includes('(' + color + ')') && !rawName.match(/\(.+\)\s*$/)) {
+      name = rawName + ' (' + color + ')';
+    }
+    // 사이즈 탐색
+    let size = '';
+    for (const idx of sizeColIdxs) {
+      const val = String(r[idx] || '').trim().replace(/\.0$/, '');
+      if (val) { size = val; break; }
+    }
+    barcodeMap[barcode] = {
+      name:  name,
+      size:  size || 'F',
+      price: pr >= 0 ? (parseInt(r[pr]) || 0) : 0
+    };
+  }
+}
+
+// ══════════════════════════════════════════
+//  SETUP: CODES FILE (현재고조회)
+// ══════════════════════════════════════════
+function handleCodesFile(file) {
+  if (!file) return;
+  codesFileName = file.name;
+  readFile(file, (rows, sheet) => {
+    codesFileRaw = rows;
+    buildCodeMap();
+    const count = Object.keys(codeMap).length;
+    document.getElementById('fname-codes').style.display = 'block';
+    document.getElementById('fname-codes').textContent = '✓ ' + file.name;
+    document.getElementById('prev-codes').textContent = `${count}개 상품코드 인식됨`;
+    const ok = count > 0;
+    document.getElementById('status-codes').textContent = ok ? '✓ 준비됨' : '⚠ 확인 필요';
+    document.getElementById('status-codes').className = 'card-status ' + (ok ? 'ok' : 'wait');
+    document.getElementById('card-codes').className = 'setup-card ' + (ok ? 'loaded' : '');
+    updateSetupNote();
+    // 앱 실행 중이면 스캔 로그 재처리
+    if (document.getElementById('appScreen').style.display !== 'none') {
+      reprocessScanLog();
+    }
+  });
+}
+
+function buildCodeMap() {
+  codeMap = {};
+  if (!codesFileRaw) return;
+  const headers = headerRow(codesFileRaw);
+  const iCode = autoColIdx(headers, ['상품코드', 'code']);
+  const iName = autoColIdx(headers, ['상품명', 'name']);
+  for (const r of dataRows(codesFileRaw)) {
+    const code = String(r[iCode] || '').trim();
+    const name = String(r[iName] || '').trim();
+    // 한글이 포함된 상품명만 (영문 제외)
+    if (!code || !name || !/[\uAC00-\uD7A3]/.test(name)) continue;
+    // key: 상품명 그대로 (사이즈 포함된 형태 "레귤러 반팔 티셔츠 (차콜) 1")
+    codeMap[name] = code;
+  }
+}
+
+// ══════════════════════════════════════════
+//  CODE LOOKUP: 상품명 + 사이즈 → 상품코드
+// ══════════════════════════════════════════
+function lookupCode(name, size) {
+  // "상품명 사이즈" 형태로 현재고조회 상품명과 매칭
+  const key = size && size !== 'F' ? `${name} ${size}` : name;
+  return codeMap[key] || codeMap[name] || null;
+}
+
+// ══════════════════════════════════════════
+//  SETUP HELPERS
+// ══════════════════════════════════════════
+function updateSetupNote() {
+  const pOk = Object.keys(barcodeMap).length > 0;
+  const cOk = Object.keys(codeMap).length > 0;
+  let note = '';
+  if (pOk && cOk)       note = '✓ 두 파일 모두 준비됨 — 전표처리 전체 기능 사용 가능';
+  else if (pOk && !cOk) note = '✓ 상품 DB 준비됨 — 상품코드 DB 없이 시작 (전표 출력 불가)';
+  else if (!pOk && cOk) note = '✓ 상품코드 DB 준비됨 — 상품 DB 없이 시작 (바코드 그대로 기록)';
+  else                   note = '파일 없이도 시작 가능 — 나중에 업로드할 수 있습니다';
+  document.getElementById('setupNote').textContent = note;
+}
+
+// Drag & drop for setup cards
+['dz-products', 'dz-codes'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('over'); });
+  el.addEventListener('dragleave', () => el.classList.remove('over'));
+  el.addEventListener('drop', e => {
+    e.preventDefault(); el.classList.remove('over');
+    const f = e.dataTransfer.files[0]; if (!f) return;
+    if (id === 'dz-products') handleProductFile(f);
+    else handleCodesFile(f);
+  });
+});
+
+// ══════════════════════════════════════════
+//  START APP
+// ══════════════════════════════════════════
+function startApp() {
+  document.getElementById('setupScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display = 'flex';
+  const bp = document.getElementById('badge-products');
+  const bc = document.getElementById('badge-codes');
+  document.getElementById('badge-products-name').textContent = productFileName || '미로드';
+  document.getElementById('badge-codes-name').textContent    = codesFileName   || '미로드';
+  if (productFileName) bp.classList.add('ok'); else bp.style.color = 'var(--muted)';
+  if (codesFileName)   bc.classList.add('ok'); else bc.style.color = 'var(--muted)';
+  setTimeout(() => document.getElementById('barcodeInput').focus(), 100);
+  renderAll();
+}
+
+// ══════════════════════════════════════════
+//  SOUND
+// ══════════════════════════════════════════
+let _audioCtx = null;
+function getAudioCtx() {
+  if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (_audioCtx.state === 'suspended') _audioCtx.resume();
+  return _audioCtx;
+}
+function playTone({ freq, type='sine', duration=0.12, gain=0.4, fadeOut=0.06, delay=0 }) {
+  const ctx = getAudioCtx();
+  const osc = ctx.createOscillator();
+  const vol = ctx.createGain();
+  osc.connect(vol); vol.connect(ctx.destination);
+  osc.type = type; osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+  vol.gain.setValueAtTime(0, ctx.currentTime + delay);
+  vol.gain.linearRampToValueAtTime(gain, ctx.currentTime + delay + 0.008);
+  vol.gain.setValueAtTime(gain, ctx.currentTime + delay + duration - fadeOut);
+  vol.gain.linearRampToValueAtTime(0, ctx.currentTime + delay + duration);
+  osc.start(ctx.currentTime + delay); osc.stop(ctx.currentTime + delay + duration);
+}
+// ✓ 정상 스캔 (매칭 성공)
+function soundOk()    { playTone({ freq: 1800, type: 'sine', duration: 0.08, gain: 0.35, fadeOut: 0.04 }); }
+// ⚠ 매칭 실패 (상품 DB엔 있으나 상품코드 없음)
+function soundWarn()  {
+  playTone({ freq: 520, type: 'triangle', duration: 0.22, gain: 0.45, fadeOut: 0.08, delay: 0.00 });
+  playTone({ freq: 380, type: 'triangle', duration: 0.18, gain: 0.35, fadeOut: 0.08, delay: 0.26 });
+}
+// ✕ 미등록 바코드
+function soundError() {
+  playTone({ freq: 220, type: 'sawtooth', duration: 0.18, gain: 0.5, fadeOut: 0.02, delay: 0.00 });
+  playTone({ freq: 220, type: 'sawtooth', duration: 0.18, gain: 0.5, fadeOut: 0.02, delay: 0.22 });
+}
+
+// ══════════════════════════════════════════
+//  SCAN LOGIC
+// ══════════════════════════════════════════
+const input = document.getElementById('barcodeInput');
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const val = input.value.trim();
+    if (val) processScan(val);
+    input.value = '';
+  }
+});
+
+function processScan(barcode) {
+  const product = barcodeMap[barcode];
+
+  // 미등록 바코드
+  if (!product && Object.keys(barcodeMap).length > 0) {
+    soundError();
+    scanLog.unshift({ barcode, name: '미등록 바코드', size: '', code: null, matched: false, unknown: true, ts: Date.now() });
+    showResult({ type: 'err', label: '미등록 바코드', name: barcode, meta: '상품 DB에 없는 바코드입니다' });
+    flashInput('err');
+    renderLog(); renderAll();
+    return;
+  }
+
+  const name  = product ? product.name : barcode;
+  const size  = product ? product.size : '';
+  const code  = product ? lookupCode(name, size) : null;
+  const matched = !!code;
+
+  // 상품 DB 없이 바코드만 기록
+  if (!product) {
+    soundOk();
+    scanLog.unshift({ barcode, name: barcode, size: '', code: null, matched: false, unknown: false, rawMode: true, ts: Date.now() });
+    const cnt = scanLog.filter(l => l.barcode === barcode && l.rawMode).length;
+    showResult({ type: 'ok', label: `스캔 ${cnt}회`, name: barcode, meta: '상품 DB 없음' });
+    flashInput('ok');
+    renderLog(); renderAll();
+    return;
+  }
+
+  if (matched) {
+    soundOk();
+  } else {
+    soundWarn();
+  }
+
+  scanLog.unshift({ barcode, name, size, code, matched, unknown: false, ts: Date.now() });
+
+  const label = matched ? `매칭 ✓ (${code})` : '상품코드 미매칭';
+  const type  = matched ? 'ok' : 'warn';
+  showResult({ type, label, name, meta: `사이즈 ${size}${code ? ' · 코드 ' + code : ' · 코드 없음'}` });
+  flashInput(matched ? 'ok' : 'warn');
+  renderLog(); renderAll();
+}
+
+// 상품코드 DB 재로드 시 기존 스캔 로그 재처리
+function reprocessScanLog() {
+  for (const l of scanLog) {
+    if (!l.unknown && !l.rawMode && l.name && l.name !== '미등록 바코드') {
+      l.code    = lookupCode(l.name, l.size);
+      l.matched = !!l.code;
+    }
+  }
+  renderLog(); renderAll();
+}
+
+function undoScan(i) {
+  scanLog.splice(i, 1);
+  renderLog(); renderAll();
+  showToast('스캔 취소됨');
+}
+
+function clearAll() {
+  if (!scanLog.length) return;
+  if (!confirm('모든 스캔 기록을 초기화할까요?')) return;
+  scanLog = [];
+  renderLog(); renderAll();
+  document.getElementById('lastResult').innerHTML = '<div class="result-empty">스캔 대기 중...</div>';
+  showToast('초기화 완료');
+}
+
+// ══════════════════════════════════════════
+//  RENDER LOG
+// ══════════════════════════════════════════
+function renderLog() {
+  document.getElementById('scanCount').textContent = scanLog.length;
+  const el = document.getElementById('scanLog');
+  if (!scanLog.length) {
+    el.innerHTML = '<div style="padding:18px;text-align:center;color:var(--muted);font-size:12px">스캔 기록 없음</div>';
+    return;
+  }
+  el.innerHTML = scanLog.map((l, i) => {
+    const col = l.unknown ? 'var(--err)' : l.matched ? 'var(--ok)' : 'var(--warn)';
+    const nm = l.name.length > 26 ? l.name.slice(0,26) + '…' : l.name;
+    const meta = l.code ? `코드 ${l.code}` : l.size ? `S:${l.size}` : l.barcode;
+    return `<div class="log-item">
+      <span class="log-num">${scanLog.length - i}</span>
+      <div class="log-dot" style="background:${col}"></div>
+      <div class="log-body">
+        <div class="log-name">${nm}</div>
+        <div class="log-meta">${meta}</div>
+      </div>
+      <button class="btn-undo" onclick="undoScan(${i})">취소</button>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════
+//  BUILD TABLE DATA
+// ══════════════════════════════════════════
+function buildMatched() {
+  // 상품코드별 집계
+  const map = {};
+  for (const l of scanLog) {
+    if (!l.matched || l.unknown) continue;
+    const k = l.code;
+    if (!map[k]) map[k] = { code: l.code, name: l.name, size: l.size, qty: 0 };
+    map[k].qty++;
+  }
+  return Object.values(map).sort((a,b) => a.name.localeCompare(b.name));
+}
+
+function buildFailed() {
+  // 미매칭 집계 (unknown, rawMode 제외)
+  const map = {};
+  for (const l of scanLog) {
+    if (l.matched || l.unknown || l.rawMode) continue;
+    const k = l.name + '::' + l.size;
+    if (!map[k]) map[k] = { name: l.name, size: l.size, qty: 0 };
+    map[k].qty++;
+  }
+  return Object.values(map).sort((a,b) => a.name.localeCompare(b.name));
+}
+
+function buildUnknown() {
+  const map = {};
+  for (const l of scanLog) {
+    if (!l.unknown) continue;
+    map[l.barcode] = (map[l.barcode] || 0) + 1;
+  }
+  return Object.entries(map).map(([barcode, qty]) => ({ barcode, qty }));
+}
+
+// ══════════════════════════════════════════
+//  RENDER TABLE
+// ══════════════════════════════════════════
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  renderTable();
+}
+
+function renderTable() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const matched = buildMatched();
+  const failed  = buildFailed();
+  const unknown = buildUnknown();
+
+  document.getElementById('cnt-matched').textContent = matched.length;
+  document.getElementById('cnt-failed').textContent  = failed.length;
+  document.getElementById('cnt-unknown').textContent = unknown.length;
+
+  const thead = document.getElementById('tableHead');
+  const tbody = document.getElementById('tableBody');
+  const empty = document.getElementById('emptyState');
+
+  if (currentTab === 'matched') {
+    thead.innerHTML = `<tr>
+      <th>상품코드</th><th style="width:50%">상품명</th><th>사이즈</th>
+      <th style="text-align:right">수량(요청)</th><th style="text-align:right">수량(입고)</th>
+    </tr>`;
+    const rows = matched.filter(r => !q || r.name.toLowerCase().includes(q));
+    if (!rows.length) { tbody.innerHTML=''; empty.style.display='flex'; return; }
+    empty.style.display = 'none';
+    tbody.innerHTML = rows.map(r => `<tr>
+      <td class="td-code">${r.code}</td>
+      <td class="td-name">${r.name}</td>
+      <td class="td-size">${r.size || 'F'}</td>
+      <td class="td-qty c-ok">${r.qty}</td>
+      <td class="td-qty c-ok">${r.qty}</td>
+    </tr>`).join('');
+
+  } else if (currentTab === 'failed') {
+    thead.innerHTML = `<tr>
+      <th style="width:60%">상품명</th><th>사이즈</th>
+      <th style="text-align:right">수량</th><th>상태</th>
+    </tr>`;
+    const rows = failed.filter(r => !q || r.name.toLowerCase().includes(q));
+    if (!rows.length) { tbody.innerHTML=''; empty.style.display='flex'; return; }
+    empty.style.display = 'none';
+    tbody.innerHTML = rows.map(r => `<tr>
+      <td class="td-name">${r.name}</td>
+      <td class="td-size">${r.size || 'F'}</td>
+      <td class="td-qty c-err">${r.qty}</td>
+      <td><span class="sbadge sbadge-fail">상품코드 미매칭</span></td>
+    </tr>`).join('');
+
+  } else {
+    thead.innerHTML = `<tr><th>바코드</th><th style="text-align:right">스캔 횟수</th><th>상태</th></tr>`;
+    const rows = unknown.filter(r => !q || r.barcode.includes(q));
+    if (!rows.length) { tbody.innerHTML=''; empty.style.display='flex'; return; }
+    empty.style.display = 'none';
+    tbody.innerHTML = rows.map(r => `<tr>
+      <td class="td-code">${r.barcode}</td>
+      <td class="td-qty c-err">${r.qty}</td>
+      <td><span class="sbadge sbadge-fail">✕ 미등록</span></td>
+    </tr>`).join('');
+  }
+}
+
+function renderAll() {
+  renderTable();
+  updateSummary();
+  updateHeader();
+}
+
+function updateSummary() {
+  const matched = buildMatched();
+  const failed  = buildFailed();
+  const total   = matched.length + failed.length;
+  const pct     = total > 0 ? Math.round(matched.length / total * 100) : 0;
+  document.getElementById('sumScan').textContent    = scanLog.length;
+  document.getElementById('sumItems').textContent   = total;
+  document.getElementById('sumMatched').textContent = matched.length;
+  document.getElementById('sumFailed').textContent  = failed.length;
+  document.getElementById('progFill').style.width   = pct + '%';
+  document.getElementById('progLabel').textContent  = `매칭 ${pct}% (${matched.length}/${total})`;
+}
+
+function updateHeader() {
+  document.getElementById('hMatched').textContent = buildMatched().length;
+  document.getElementById('hFailed').textContent  = buildFailed().length;
+  document.getElementById('hUnknown').textContent = buildUnknown().length;
+}
+
+// ══════════════════════════════════════════
+//  EXPORT
+// ══════════════════════════════════════════
+function exportCSV() {
+  const matched = buildMatched();
+  const failed  = buildFailed();
+  const rows = [
+    ['상품코드','요청수량','입고수량','요청메모','입고대기','불량입고수량'].join(','),
+    ...matched.map(r => [r.code, r.qty, r.qty, '', '', ''].join(',')),
+    '',
+    ['[매칭실패]','스캔상품명','집계수량','매칭상태','후보상품명'].join(','),
+    ...failed.map(r => ['', `"${r.name} ${r.size}"`, r.qty, '상품코드 미매칭', ''].join(','))
+  ].join('\n');
+  const blob = new Blob(['\uFEFF' + rows], { type: 'text/csv;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `전표처리_${today()}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+  showToast('CSV 내보내기 완료');
+}
+
+function exportXLSX() {
+  const matched = buildMatched();
+  const wb = XLSX.utils.book_new();
+  const voucher = [
+    ['상품코드','요청수량','입고수량','요청메모','입고대기','불량입고수량'],
+    ...matched.map(r => [r.code, r.qty, r.qty, null, null, null])
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(voucher), '전표처리');
+  XLSX.writeFile(wb, `전표처리_${today()}.xlsx`);
+  showToast('XLSX 내보내기 완료');
+}
+
+function today() {
+  return new Date().toLocaleDateString('ko-KR').replace(/\.\s*/g,'-').replace(/-$/,'');
+}
+
+// ══════════════════════════════════════════
+//  UPDATE MODAL (앱 실행 중 재업로드)
+// ══════════════════════════════════════════
+function openModal(mode) {
+  modalMode = mode;
+  document.getElementById('updateModal').style.display = 'flex';
+  document.getElementById('modalFile').value = '';
+  document.getElementById('modalTitle').textContent = mode === 'products' ? '상품 DB 업데이트' : '상품코드 DB 업데이트';
+  document.getElementById('modalSub').textContent   = mode === 'products'
+    ? '새 상품정보 파일을 업로드하면 바코드 매핑이 교체됩니다.'
+    : '새 현재고조회 파일을 업로드하면 상품코드 매핑이 교체되고\n기존 스캔 기록이 재처리됩니다.';
+  const dz = document.getElementById('modalDZ');
+  dz.ondragover = e => { e.preventDefault(); dz.classList.add('over'); };
+  dz.ondragleave = () => dz.classList.remove('over');
+  dz.ondrop = e => { e.preventDefault(); dz.classList.remove('over'); const f = e.dataTransfer.files[0]; if(f) handleModalFile(f); };
+}
+
+function closeModal() { document.getElementById('updateModal').style.display = 'none'; }
+
+function handleModalFile(file) {
+  if (modalMode === 'products') {
+    handleProductFile(file);
+    document.getElementById('badge-products-name').textContent = file.name;
+    document.getElementById('badge-products').classList.add('ok');
+    showToast(`✓ 상품 DB 업데이트 완료`);
+  } else {
+    handleCodesFile(file);
+    document.getElementById('badge-codes-name').textContent = file.name;
+    document.getElementById('badge-codes').classList.add('ok');
+    showToast(`✓ 상품코드 DB 업데이트 완료`);
+  }
+  closeModal();
+}
+
+// ══════════════════════════════════════════
+//  UI HELPERS
+// ══════════════════════════════════════════
+function showResult({ type, label, name, meta }) {
+  document.getElementById('lastResult').innerHTML =
+    `<div class="result-card ${type}">
+      <div class="result-status">${label}</div>
+      <div class="result-name">${name}</div>
+      <div class="result-meta">${meta}</div>
+    </div>`;
+}
+
+function flashInput(type) {
+  input.classList.remove('flash-ok','flash-err','flash-warn');
+  void input.offsetWidth;
+  input.classList.add(`flash-${type}`);
+  setTimeout(() => input.classList.remove('flash-ok','flash-err','flash-warn'), 500);
+}
+
+let _toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+</script>
+</body>
+</html>
