@@ -671,24 +671,33 @@ function processScan(barcode) {
 
   // 바코드로 못 찾았고, 숫자가 아닌 경우 → 상품명 검색 시도
   if (!product && !/^\d+$/.test(barcode)) {
-    const key = barcode.toLowerCase();
-    const candidates = nameMap[key] || [];
-    if (candidates.length === 1) {
-      // 정확히 하나만 매칭 → 바로 처리
-      product = candidates[0];
-    } else if (candidates.length > 1) {
-      // 여러 사이즈 존재 → 선택 UI
-      showNameCandidates(barcode, candidates);
+    const key = barcode.trim().toLowerCase();
+
+    // 1) 정확히 일치
+    const exact = nameMap[key] || [];
+    if (exact.length === 1) {
+      product = exact[0];
+    } else if (exact.length > 1) {
+      showNameCandidates(barcode, exact);
       return;
     } else {
-      // 부분 일치 검색
+      // 2) 부분 일치 — 키가 입력값을 포함하거나, 입력값이 키를 포함하는 경우 모두
       const partial = Object.entries(nameMap)
-        .filter(([k]) => k.includes(key))
+        .filter(([k]) => k.includes(key) || key.includes(k))
         .flatMap(([, v]) => v);
-      if (partial.length === 1) {
-        product = partial[0];
-      } else if (partial.length > 1) {
-        showNameCandidates(barcode, partial);
+
+      // 중복 제거 (같은 name+size)
+      const seen = new Set();
+      const unique = partial.filter(c => {
+        const id = c.name + '::' + c.size;
+        if (seen.has(id)) return false;
+        seen.add(id); return true;
+      });
+
+      if (unique.length === 1) {
+        product = unique[0];
+      } else if (unique.length > 1) {
+        showNameCandidates(barcode, unique);
         return;
       }
     }
@@ -965,8 +974,8 @@ function exportXLSX() {
   const matched = buildMatched();
   const wb = XLSX.utils.book_new();
   const voucher = [
-    ['상품코드','요청수량','입고수량','요청메모','입고대기','불량입고수량'],
-    ...matched.map(r => [r.code, r.qty, r.qty, null, null, null])
+    ['상품명','사이즈','상품코드','요청수량','입고수량','요청메모','입고대기','불량입고수량'],
+    ...matched.map(r => [r.name, r.size || 'F', r.code, r.qty, r.qty, null, null, null])
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(voucher), '전표처리');
   XLSX.writeFile(wb, `전표처리_${today()}.xlsx`);
