@@ -194,6 +194,16 @@ td { padding: 9px 10px; vertical-align: middle; }
 .btn-cancel:hover { color: var(--text); border-color: var(--text); }
 
 /* Toast */
+.candidate-list { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+.candidate-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--r); cursor: pointer; transition: all 0.12s; }
+.candidate-item:hover { border-color: var(--accent); background: var(--surface); }
+.candidate-name { font-size: 13px; font-weight: 500; }
+.candidate-size { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
+.adj-wrap { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.adj-btn { width: 22px; height: 22px; border-radius: 3px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 14px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s; font-weight: 500; flex-shrink: 0; }
+.adj-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--surface); }
+.adj-val { font-family: 'JetBrains Mono', monospace; font-size: 11px; min-width: 28px; text-align: center; }
+.adj-val.pos { color: var(--ok); } .adj-val.neg { color: var(--err); }
 #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(12px); background: var(--surface2); border: 1px solid var(--border); padding: 8px 16px; border-radius: 20px; font-size: 12px; opacity: 0; transition: all 0.25s; z-index: 999; pointer-events: none; white-space: nowrap; }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 </style>
@@ -211,8 +221,8 @@ td { padding: 9px 10px; vertical-align: middle; }
     <div class="setup-card" id="card-products">
       <div class="card-status wait" id="status-products">대기</div>
       <div class="card-icon">🗂</div>
-      <div class="card-label">페이히어 재고 DB</div>
-      <div class="card-title">상품정보_*.xlsx</div>
+      <div class="card-label"><span style="font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0;text-transform:none">상품정보_스테디에브리웨어_*.xlsx</span></div>
+      <div class="card-title">페이히어 재고 DB</div>
       <div class="card-desc">바코드 → 상품명·사이즈 매핑<br>없으면 바코드 그대로 기록됩니다.</div>
       <div class="card-format"><strong>바코드</strong> · <strong>상품명</strong> · 옵션_사이즈 컬럼 자동 인식</div>
       <div class="file-loaded-name" id="fname-products"></div>
@@ -223,13 +233,12 @@ td { padding: 9px 10px; vertical-align: middle; }
       <div class="preview-mini" id="prev-products"></div>
     </div>
 
-    
     <!-- Card 2: 현재고조회 (상품코드 DB) -->
     <div class="setup-card" id="card-codes">
       <div class="card-status wait" id="status-codes">대기</div>
       <div class="card-icon">🔢</div>
-      <div class="card-label">이지어드민 재고 DB</div>
-      <div class="card-title">현재고조회_*.xls</div>
+      <div class="card-label"><span style="font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0;text-transform:none">현재고조회_*.xls</span></div>
+      <div class="card-title">이지어드민 재고 DB</div>
       <div class="card-desc">상품명 → 상품코드 매핑<br>없으면 전표처리 출력이 불가합니다.</div>
       <div class="card-format"><strong>상품코드</strong> · <strong>상품명</strong> 컬럼 자동 인식<br>.xls (HTML 형식) 지원</div>
       <div class="file-loaded-name" id="fname-codes"></div>
@@ -239,7 +248,6 @@ td { padding: 9px 10px; vertical-align: middle; }
       </div>
       <div class="preview-mini" id="prev-codes"></div>
     </div>
-
   </div>
 
   <div class="setup-start-wrap">
@@ -271,7 +279,7 @@ td { padding: 9px 10px; vertical-align: middle; }
       <div class="scan-area">
         <div class="scan-wrap">
           <span class="scan-ico">⬛</span>
-          <input type="text" id="barcodeInput" placeholder="바코드 스캔 또는 입력..." autocomplete="off" spellcheck="false">
+          <input type="text" id="barcodeInput" placeholder="바코드 스캔 또는 상품명 입력..." autocomplete="off" spellcheck="false">
         </div>
         <div class="scan-hint">스캐너 연결 후 스캔하거나 직접 입력 → Enter</div>
       </div>
@@ -341,6 +349,18 @@ td { padding: 9px 10px; vertical-align: middle; }
   </div>
 </div>
 
+<!-- 상품명 후보 선택 모달 -->
+<div class="modal-overlay" id="candidateModal" style="display:none" onclick="if(event.target===this)closeCandidateModal()">
+  <div class="modal">
+    <div class="modal-title">상품 선택</div>
+    <div class="modal-sub" id="candidateQuery"></div>
+    <div class="candidate-list" id="candidateList"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeCandidateModal()">취소</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -349,7 +369,9 @@ td { padding: 9px 10px; vertical-align: middle; }
 // ══════════════════════════════════════════
 let barcodeMap  = {};  // barcode -> { name, size, price }
 let codeMap     = {};  // "상품명 사이즈" -> 상품코드
+let nameMap     = {};  // 상품명(소문자) -> [{ name, size, price }] (상품명 입력 검색용)
 let scanLog     = [];  // [{ barcode, name, size, code, matched, unknown, ts }]
+let voucherAdj  = {};  // 상품코드 -> 수기 보정값 (+/-)
 let currentTab  = 'matched';
 
 let productFileName = '';
@@ -490,6 +512,20 @@ function buildProductMap() {
   }
 }
 
+// nameMap 구축 (상품명 → 상품 정보, 상품명 입력 검색용)
+function buildNameMap() {
+  nameMap = {};
+  for (const { name, size, price } of Object.values(barcodeMap)) {
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (!nameMap[key]) nameMap[key] = [];
+    // 같은 이름+사이즈 중복 제거
+    if (!nameMap[key].some(e => e.size === size)) {
+      nameMap[key].push({ name, size, price });
+    }
+  }
+}
+
 // ══════════════════════════════════════════
 //  SETUP: CODES FILE (현재고조회)
 // ══════════════════════════════════════════
@@ -498,6 +534,7 @@ function handleCodesFile(file) {
   codesFileName = file.name;
   readFile(file, (rows, sheet) => {
     codesFileRaw = rows;
+    buildNameMap();
     buildCodeMap();
     const count = Object.keys(codeMap).length;
     document.getElementById('fname-codes').style.display = 'block';
@@ -630,13 +667,38 @@ input.addEventListener('keydown', e => {
 });
 
 function processScan(barcode) {
-  const product = barcodeMap[barcode];
+  let product = barcodeMap[barcode];
 
-  // 미등록 바코드
+  // 바코드로 못 찾았고, 숫자가 아닌 경우 → 상품명 검색 시도
+  if (!product && !/^\d+$/.test(barcode)) {
+    const key = barcode.toLowerCase();
+    const candidates = nameMap[key] || [];
+    if (candidates.length === 1) {
+      // 정확히 하나만 매칭 → 바로 처리
+      product = candidates[0];
+    } else if (candidates.length > 1) {
+      // 여러 사이즈 존재 → 선택 UI
+      showNameCandidates(barcode, candidates);
+      return;
+    } else {
+      // 부분 일치 검색
+      const partial = Object.entries(nameMap)
+        .filter(([k]) => k.includes(key))
+        .flatMap(([, v]) => v);
+      if (partial.length === 1) {
+        product = partial[0];
+      } else if (partial.length > 1) {
+        showNameCandidates(barcode, partial);
+        return;
+      }
+    }
+  }
+
+  // 미등록
   if (!product && Object.keys(barcodeMap).length > 0) {
     soundError();
-    scanLog.unshift({ barcode, name: '미등록 바코드', size: '', code: null, matched: false, unknown: true, ts: Date.now() });
-    showResult({ type: 'err', label: '미등록 바코드', name: barcode, meta: '상품 DB에 없는 바코드입니다' });
+    scanLog.unshift({ barcode, name: '미등록', size: '', code: null, matched: false, unknown: true, ts: Date.now() });
+    showResult({ type: 'err', label: '미등록', name: barcode, meta: '상품 DB에서 찾을 수 없습니다' });
     flashInput('err');
     renderLog(); renderAll();
     return;
@@ -693,7 +755,7 @@ function undoScan(i) {
 function clearAll() {
   if (!scanLog.length) return;
   if (!confirm('모든 스캔 기록을 초기화할까요?')) return;
-  scanLog = [];
+  scanLog = []; voucherAdj = {};
   renderLog(); renderAll();
   document.getElementById('lastResult').innerHTML = '<div class="result-empty">스캔 대기 중...</div>';
   showToast('초기화 완료');
@@ -729,13 +791,16 @@ function renderLog() {
 //  BUILD TABLE DATA
 // ══════════════════════════════════════════
 function buildMatched() {
-  // 상품코드별 집계
   const map = {};
   for (const l of scanLog) {
     if (!l.matched || l.unknown) continue;
     const k = l.code;
     if (!map[k]) map[k] = { code: l.code, name: l.name, size: l.size, qty: 0 };
     map[k].qty++;
+  }
+  // 보정값 반영
+  for (const [code, adj] of Object.entries(voucherAdj)) {
+    if (map[code]) map[code].qty = Math.max(0, map[code].qty + adj);
   }
   return Object.values(map).sort((a,b) => a.name.localeCompare(b.name));
 }
@@ -787,19 +852,31 @@ function renderTable() {
 
   if (currentTab === 'matched') {
     thead.innerHTML = `<tr>
-      <th>상품코드</th><th style="width:50%">상품명</th><th>사이즈</th>
-      <th style="text-align:right">수량(요청)</th><th style="text-align:right">수량(입고)</th>
+      <th>상품코드</th><th style="width:44%">상품명</th><th>사이즈</th>
+      <th style="text-align:right">수량(요청)</th><th style="text-align:right">수기조정</th><th style="text-align:right">수량(입고)</th>
     </tr>`;
     const rows = matched.filter(r => !q || r.name.toLowerCase().includes(q));
     if (!rows.length) { tbody.innerHTML=''; empty.style.display='flex'; return; }
     empty.style.display = 'none';
-    tbody.innerHTML = rows.map(r => `<tr>
-      <td class="td-code">${r.code}</td>
-      <td class="td-name">${r.name}</td>
-      <td class="td-size">${r.size || 'F'}</td>
-      <td class="td-qty c-ok">${r.qty}</td>
-      <td class="td-qty c-ok">${r.qty}</td>
-    </tr>`).join('');
+    tbody.innerHTML = rows.map(r => {
+      const adj = voucherAdj[r.code] || 0;
+      const adjCls = adj > 0 ? 'c-ok' : adj < 0 ? 'c-err' : 'c-dim';
+      const adjTxt = adj > 0 ? '+' + adj : adj === 0 ? '0' : String(adj);
+      return `<tr>
+        <td class="td-code">${r.code}</td>
+        <td class="td-name">${r.name}</td>
+        <td class="td-size">${r.size || 'F'}</td>
+        <td class="td-qty c-ok">${r.qty - adj}</td>
+        <td class="td-qty">
+          <div class="adj-wrap">
+            <button class="adj-btn" onclick="voucherAdjust('${r.code}',-1)">−</button>
+            <span class="adj-val ${adjCls}">${adjTxt}</span>
+            <button class="adj-btn" onclick="voucherAdjust('${r.code}',+1)">+</button>
+          </div>
+        </td>
+        <td class="td-qty c-ok">${r.qty}</td>
+      </tr>`;
+    }).join('');
 
   } else if (currentTab === 'failed') {
     thead.innerHTML = `<tr>
@@ -857,6 +934,15 @@ function updateHeader() {
 // ══════════════════════════════════════════
 //  EXPORT
 // ══════════════════════════════════════════
+function voucherAdjust(code, delta) {
+  voucherAdj[code] = (voucherAdj[code] || 0) + delta;
+  // 스캔 수량 + 보정이 0 미만이 되지 않도록
+  const base = buildMatched().find(r => r.code === code);
+  const baseQty = base ? base.qty - (voucherAdj[code] - delta) : 0;
+  if (baseQty + voucherAdj[code] < 0) voucherAdj[code] = -baseQty;
+  renderTable();
+}
+
 function exportCSV() {
   const matched = buildMatched();
   const failed  = buildFailed();
@@ -942,6 +1028,36 @@ function flashInput(type) {
   void input.offsetWidth;
   input.classList.add(`flash-${type}`);
   setTimeout(() => input.classList.remove('flash-ok','flash-err','flash-warn'), 500);
+}
+
+function showNameCandidates(query, candidates) {
+  document.getElementById('candidateQuery').textContent = `"${query}" 검색 결과 — 사이즈를 선택하세요`;
+  document.getElementById('candidateList').innerHTML = candidates.map(c =>
+    `<div class="candidate-item" onclick="selectCandidate('${c.name.replace(/'/g,"\'")}','${c.size}')">
+      <span class="candidate-name">${c.name}</span>
+      <span class="candidate-size">사이즈 ${c.size || 'F'}</span>
+    </div>`
+  ).join('');
+  document.getElementById('candidateModal').style.display = 'flex';
+}
+
+function closeCandidateModal() {
+  document.getElementById('candidateModal').style.display = 'none';
+  setTimeout(() => document.getElementById('barcodeInput').focus(), 50);
+}
+
+function selectCandidate(name, size) {
+  closeCandidateModal();
+  // 선택한 상품을 직접 스캔 처리
+  const code = lookupCode(name, size);
+  const matched = !!code;
+  if (matched) soundOk(); else soundWarn();
+  scanLog.unshift({ barcode: name, name, size, code, matched, unknown: false, ts: Date.now() });
+  const label = matched ? `매칭 ✓ (${code})` : '상품코드 미매칭';
+  const type  = matched ? 'ok' : 'warn';
+  showResult({ type, label, name, meta: `사이즈 ${size}${code ? ' · 코드 ' + code : ' · 코드 없음'}` });
+  flashInput(matched ? 'ok' : 'warn');
+  renderLog(); renderAll();
 }
 
 let _toastTimer;
