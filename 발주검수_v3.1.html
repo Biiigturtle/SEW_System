@@ -502,6 +502,24 @@ td { padding: 9px 10px; vertical-align: middle; }
 }
 .reg-registered-item:last-child { border-bottom: none; }
 .reg-registered-name { color: var(--text); font-weight: 500; }
+.autocomplete-wrap { position: relative; }
+.autocomplete-list {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 500;
+  background: var(--surface); border: 1px solid var(--accent);
+  border-top: none; border-radius: 0 0 var(--r) var(--r);
+  max-height: 200px; overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.autocomplete-item {
+  padding: 9px 12px; cursor: pointer; font-size: 12px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.autocomplete-item:last-child { border-bottom: none; }
+.autocomplete-item:hover, .autocomplete-item.selected { background: var(--accent-dim); }
+.autocomplete-item-name { font-weight: 500; color: var(--text); }
+.autocomplete-item-size { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
 
 #toast {
   position: fixed; bottom: 20px; left: 50%;
@@ -890,7 +908,10 @@ td { padding: 9px 10px; vertical-align: middle; }
     </div>
     <div class="reg-row">
       <div class="reg-label">상품명</div>
-      <input type="text" class="reg-input" id="regName" placeholder="예) 레귤러 반팔 티셔츠 (차콜)" autocomplete="off">
+      <div class="autocomplete-wrap">
+        <input type="text" class="reg-input" id="regName" placeholder="예) 레귤러 반팔 티셔츠 (차콜)" autocomplete="off" oninput="onRegNameInput()" onkeydown="onRegNameKey(event)">
+        <div class="autocomplete-list" id="regNameList" style="display:none"></div>
+      </div>
     </div>
     <div class="reg-row-two">
       <div class="reg-row" style="margin-bottom:0">
@@ -2073,8 +2094,73 @@ function openRegisterModal(barcode) {
   setTimeout(() => document.getElementById('regName').focus(), 100);
 }
 
+// 자동완성 — 상품명 입력 시 barcodeMap에서 검색
+let _acSelected = -1;
+
+function onRegNameInput() {
+  const q = document.getElementById('regName').value.trim().toLowerCase();
+  const list = document.getElementById('regNameList');
+  _acSelected = -1;
+
+  if (!q || q.length < 1) { list.style.display = 'none'; return; }
+
+  // barcodeMap에서 상품명 기준으로 중복 제거 후 검색
+  const seen = new Set();
+  const matches = [];
+  for (const { name, size } of Object.values(barcodeMap)) {
+    if (!name) continue;
+    const id = name + '::' + size;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    if (name.toLowerCase().includes(q)) matches.push({ name, size });
+  }
+  matches.sort((a, b) => a.name.localeCompare(b.name));
+
+  if (!matches.length) { list.style.display = 'none'; return; }
+
+  list.innerHTML = matches.slice(0, 20).map((m, i) =>
+    `<div class="autocomplete-item" data-name="${m.name}" data-size="${m.size}"
+       onmousedown="selectAcItem('${m.name.replace(/'/g,"\'")}','${m.size}')">
+      <span class="autocomplete-item-name">${m.name}</span>
+      <span class="autocomplete-item-size">S: ${m.size || 'F'}</span>
+    </div>`
+  ).join('');
+  list.style.display = 'block';
+}
+
+function selectAcItem(name, size) {
+  document.getElementById('regName').value = name;
+  document.getElementById('regSize').value = size;
+  document.getElementById('regNameList').style.display = 'none';
+  _acSelected = -1;
+  document.getElementById('regPrice').focus();
+}
+
+function onRegNameKey(e) {
+  const list = document.getElementById('regNameList');
+  const items = list.querySelectorAll('.autocomplete-item');
+  if (!items.length || list.style.display === 'none') return;
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _acSelected = Math.min(_acSelected + 1, items.length - 1);
+    items.forEach((el, i) => el.classList.toggle('selected', i === _acSelected));
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _acSelected = Math.max(_acSelected - 1, -1);
+    items.forEach((el, i) => el.classList.toggle('selected', i === _acSelected));
+  } else if (e.key === 'Enter' && _acSelected >= 0) {
+    e.preventDefault(); e.stopPropagation();
+    const item = items[_acSelected];
+    selectAcItem(item.dataset.name, item.dataset.size);
+  } else if (e.key === 'Escape') {
+    list.style.display = 'none'; _acSelected = -1;
+  }
+}
+
 function closeRegisterModal() {
   document.getElementById('registerModal').style.display = 'none';
+  document.getElementById('regNameList').style.display = 'none';
   pendingBarcode = null;
   setTimeout(() => document.getElementById('barcodeInput').focus(), 50);
 }
