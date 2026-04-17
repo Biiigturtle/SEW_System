@@ -204,6 +204,23 @@ td { padding: 9px 10px; vertical-align: middle; }
 .adj-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--surface); }
 .adj-val { font-family: 'JetBrains Mono', monospace; font-size: 11px; min-width: 28px; text-align: center; }
 .adj-val.pos { color: var(--ok); } .adj-val.neg { color: var(--err); }
+.scan-autocomplete {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 200;
+  background: var(--surface); border: 1px solid var(--accent);
+  border-top: none; border-radius: 0 0 var(--r) var(--r);
+  max-height: 220px; overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.scan-ac-item {
+  padding: 9px 14px; cursor: pointer; font-size: 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  transition: background 0.1s;
+}
+.scan-ac-item:last-child { border-bottom: none; }
+.scan-ac-item:hover, .scan-ac-item.ac-sel { background: var(--accent-dim); }
+.scan-ac-name { font-weight: 500; }
+.scan-ac-size { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
 #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(12px); background: var(--surface2); border: 1px solid var(--border); padding: 8px 16px; border-radius: 20px; font-size: 12px; opacity: 0; transition: all 0.25s; z-index: 999; pointer-events: none; white-space: nowrap; }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 </style>
@@ -221,8 +238,8 @@ td { padding: 9px 10px; vertical-align: middle; }
     <div class="setup-card" id="card-products">
       <div class="card-status wait" id="status-products">대기</div>
       <div class="card-icon">🗂</div>
-      <div class="card-label"><span style="font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0;text-transform:none">상품정보_스테디에브리웨어_*.xlsx</span></div>
-      <div class="card-title">페이히어 재고 DB</div>
+      <div class="card-label">상품 DB <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:0;text-transform:none">선택사항</span></div>
+      <div class="card-title">상품정보 파일</div>
       <div class="card-desc">바코드 → 상품명·사이즈 매핑<br>없으면 바코드 그대로 기록됩니다.</div>
       <div class="card-format"><strong>바코드</strong> · <strong>상품명</strong> · 옵션_사이즈 컬럼 자동 인식</div>
       <div class="file-loaded-name" id="fname-products"></div>
@@ -237,8 +254,8 @@ td { padding: 9px 10px; vertical-align: middle; }
     <div class="setup-card" id="card-codes">
       <div class="card-status wait" id="status-codes">대기</div>
       <div class="card-icon">🔢</div>
-      <div class="card-label"><span style="font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0;text-transform:none">현재고조회_*.xls</span></div>
-      <div class="card-title">이지어드민 재고 DB</div>
+      <div class="card-label">상품코드 DB <span style="font-size:9px;color:var(--muted);font-weight:400;letter-spacing:0;text-transform:none">선택사항</span></div>
+      <div class="card-title">현재고조회 파일</div>
       <div class="card-desc">상품명 → 상품코드 매핑<br>없으면 전표처리 출력이 불가합니다.</div>
       <div class="card-format"><strong>상품코드</strong> · <strong>상품명</strong> 컬럼 자동 인식<br>.xls (HTML 형식) 지원</div>
       <div class="file-loaded-name" id="fname-codes"></div>
@@ -279,7 +296,9 @@ td { padding: 9px 10px; vertical-align: middle; }
       <div class="scan-area">
         <div class="scan-wrap">
           <span class="scan-ico">⬛</span>
-          <input type="text" id="barcodeInput" placeholder="바코드 스캔 또는 상품명 입력..." autocomplete="off" spellcheck="false">
+          <input type="text" id="barcodeInput" placeholder="바코드 스캔 또는 상품명 입력..." autocomplete="off" spellcheck="false"
+            oninput="onScanInput()" onkeydown="onScanKey(event)">
+          <div class="scan-autocomplete" id="scanAcList" style="display:none"></div>
         </div>
         <div class="scan-hint">스캐너 연결 후 스캔하거나 직접 입력 → Enter</div>
       </div>
@@ -510,6 +529,7 @@ function buildProductMap() {
       price: pr >= 0 ? (parseInt(r[pr]) || 0) : 0
     };
   }
+  buildNameMap(); // 상품 DB 로드 후 즉시 nameMap 갱신
 }
 
 // nameMap 구축 (상품명 → 상품 정보, 상품명 입력 검색용)
@@ -660,6 +680,11 @@ function soundError() {
 const input = document.getElementById('barcodeInput');
 input.addEventListener('keydown', e => {
   if (e.key === 'Enter') {
+    const list = document.getElementById('scanAcList');
+    // 자동완성 선택 중이면 Enter는 자동완성 선택으로 처리 (onScanKey에서 처리됨)
+    if (list.style.display !== 'none' && _scanAcSel >= 0) return;
+    list.style.display = 'none';
+    _scanAcSel = -1;
     const val = input.value.trim();
     if (val) processScan(val);
     input.value = '';
@@ -1080,6 +1105,90 @@ function selectCandidate(name, size) {
   flashInput(matched ? 'ok' : 'warn');
   renderLog(); renderAll();
 }
+
+// ── 스캔창 상품명 자동완성 ──
+let _scanAcSel = -1;
+
+function onScanInput() {
+  const q = input.value.trim().toLowerCase();
+  const list = document.getElementById('scanAcList');
+  _scanAcSel = -1;
+
+  // 숫자(바코드)면 자동완성 안 띄움
+  if (!q || /^\d+$/.test(q)) { list.style.display = 'none'; return; }
+
+  const seen = new Set();
+  const matches = [];
+  for (const { name, size } of Object.values(barcodeMap)) {
+    if (!name) continue;
+    const id = name + '::' + size;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    if (name.toLowerCase().includes(q)) matches.push({ name, size });
+  }
+  matches.sort((a, b) => a.name.localeCompare(b.name));
+
+  if (!matches.length) { list.style.display = 'none'; return; }
+
+  list.innerHTML = matches.slice(0, 20).map((m, i) =>
+    `<div class="scan-ac-item" data-name="${m.name}" data-size="${m.size}"
+       onmousedown="selectScanAc('${m.name.replace(/'/g,"\'")}','${m.size}')">
+      <span class="scan-ac-name">${m.name}</span>
+      <span class="scan-ac-size">S: ${m.size || 'F'}</span>
+    </div>`
+  ).join('');
+  list.style.display = 'block';
+}
+
+function selectScanAc(name, size) {
+  document.getElementById('scanAcList').style.display = 'none';
+  _scanAcSel = -1;
+  input.value = '';
+  // 선택한 상품을 직접 processScan에 넘김
+  processScanByName(name, size);
+}
+
+function processScanByName(name, size) {
+  const code = lookupCode(name, size);
+  const matched = !!code;
+  if (matched) soundOk(); else soundWarn();
+  scanLog.unshift({ barcode: name, name, size, code, matched, unknown: false, ts: Date.now() });
+  const label = matched ? `매칭 ✓ (${code})` : '상품코드 미매칭';
+  const type  = matched ? 'ok' : 'warn';
+  showResult({ type, label, name, meta: `사이즈 ${size || 'F'}${code ? ' · 코드 ' + code : ' · 코드 없음'}` });
+  flashInput(matched ? 'ok' : 'warn');
+  renderLog(); renderAll();
+}
+
+function onScanKey(e) {
+  const list = document.getElementById('scanAcList');
+  const items = list.querySelectorAll('.scan-ac-item');
+  if (!items.length || list.style.display === 'none') return;
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _scanAcSel = Math.min(_scanAcSel + 1, items.length - 1);
+    items.forEach((el, i) => el.classList.toggle('ac-sel', i === _scanAcSel));
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _scanAcSel = Math.max(_scanAcSel - 1, -1);
+    items.forEach((el, i) => el.classList.toggle('ac-sel', i === _scanAcSel));
+  } else if (e.key === 'Enter' && _scanAcSel >= 0) {
+    e.preventDefault(); e.stopPropagation();
+    const item = items[_scanAcSel];
+    selectScanAc(item.dataset.name, item.dataset.size);
+  } else if (e.key === 'Escape') {
+    list.style.display = 'none'; _scanAcSel = -1;
+  }
+}
+
+// 외부 클릭 시 자동완성 닫기
+document.addEventListener('click', e => {
+  if (!e.target.closest('.scan-wrap')) {
+    document.getElementById('scanAcList').style.display = 'none';
+    _scanAcSel = -1;
+  }
+});
 
 let _toastTimer;
 function showToast(msg) {
