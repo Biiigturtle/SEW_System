@@ -879,7 +879,10 @@ function renderTable() {
         <td class="td-qty">
           <div class="adj-wrap">
             <button class="adj-btn" onclick="voucherAdjust('${r.code}',-1)">−</button>
-            <span class="adj-val ${adjCls}">${adjTxt}</span>
+            <input class="adj-input ${adjCls}" type="number" value="${adj}"
+              onchange="voucherAdjustDirect('${r.code}', this.value)"
+              onclick="this.select()"
+              style="width:46px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:12px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);color:inherit;padding:2px 4px;">
             <button class="adj-btn" onclick="voucherAdjust('${r.code}',+1)">+</button>
           </div>
         </td>
@@ -943,6 +946,15 @@ function updateHeader() {
 // ══════════════════════════════════════════
 //  EXPORT
 // ══════════════════════════════════════════
+function voucherAdjustDirect(code, value) {
+  const raw = parseInt(value) || 0;
+  // 스캔 기본 수량 + 보정이 0 미만 안 되게
+  const base = buildMatched().find(r => r.code === code);
+  const baseQty = base ? base.qty - (voucherAdj[code] || 0) : 0;
+  voucherAdj[code] = Math.max(-baseQty, raw);
+  renderTable();
+}
+
 function voucherAdjust(code, delta) {
   voucherAdj[code] = (voucherAdj[code] || 0) + delta;
   // 스캔 수량 + 보정이 0 미만이 되지 않도록
@@ -974,8 +986,8 @@ function exportXLSX() {
   const matched = buildMatched();
   const wb = XLSX.utils.book_new();
   const voucher = [
-    ['상품명','사이즈','상품코드','요청수량','입고수량','요청메모','입고대기','불량입고수량'],
-    ...matched.map(r => [r.name, r.size || 'F', r.code, r.qty, r.qty, null, null, null])
+    ['상품코드','요청수량','입고수량','요청메모','입고대기','불량입고수량'],
+    ...matched.map(r => [r.code, r.qty, r.qty, null, null, null])
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(voucher), '전표처리');
   XLSX.writeFile(wb, `전표처리_${today()}.xlsx`);
