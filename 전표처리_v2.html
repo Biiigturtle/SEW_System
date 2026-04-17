@@ -832,9 +832,9 @@ function buildMatched() {
     if (!map[k]) map[k] = { code: l.code, name: l.name, size: l.size, qty: 0 };
     map[k].qty++;
   }
-  // 보정값 반영
-  for (const [code, adj] of Object.entries(voucherAdj)) {
-    if (map[code]) map[code].qty = Math.max(0, map[code].qty + adj);
+  // 수기 입력 수량으로 치환 (override)
+  for (const [code, qty] of Object.entries(voucherAdj)) {
+    if (map[code]) map[code].qty = qty;
   }
   return Object.values(map).sort((a,b) => a.name.localeCompare(b.name));
 }
@@ -886,32 +886,36 @@ function renderTable() {
 
   if (currentTab === 'matched') {
     thead.innerHTML = `<tr>
-      <th>상품코드</th><th style="width:44%">상품명</th><th>사이즈</th>
-      <th style="text-align:right">수량(요청)</th><th style="text-align:right">수기조정</th><th style="text-align:right">수량(입고)</th>
+      <th>상품코드</th><th style="width:40%">상품명</th><th>사이즈</th>
+      <th style="text-align:right">스캔수량</th><th style="text-align:right">수기입력</th><th style="text-align:right">최종수량</th>
     </tr>`;
     const rows = matched.filter(r => !q || r.name.toLowerCase().includes(q));
     if (!rows.length) { tbody.innerHTML=''; empty.style.display='flex'; return; }
     empty.style.display = 'none';
     tbody.innerHTML = rows.map(r => {
-      const adj = voucherAdj[r.code] || 0;
-      const adjCls = adj > 0 ? 'c-ok' : adj < 0 ? 'c-err' : 'c-dim';
-      const adjTxt = adj > 0 ? '+' + adj : adj === 0 ? '0' : String(adj);
+      // voucherAdj가 있으면 override, 없으면 스캔 수량
+      const hasOverride = voucherAdj[r.code] !== undefined;
+      const scanQty = hasOverride
+        ? Object.values(scanLog).filter(l => l.matched && l.code === r.code).length
+        : r.qty;
+      const finalQty = r.qty; // buildMatched에서 이미 override 반영됨
+      const inputVal = hasOverride ? voucherAdj[r.code] : finalQty;
       return `<tr>
         <td class="td-code">${r.code}</td>
         <td class="td-name">${r.name}</td>
         <td class="td-size">${r.size || 'F'}</td>
-        <td class="td-qty c-ok">${r.qty - adj}</td>
+        <td class="td-qty c-dim">${scanQty}</td>
         <td class="td-qty">
           <div class="adj-wrap">
-            <button class="adj-btn" onclick="voucherAdjust('${r.code}',-1)">−</button>
-            <input class="adj-input ${adjCls}" type="number" value="${adj}"
+            <button class="adj-btn" onclick="voucherAdjustBtn('${r.code}',-1)">−</button>
+            <input type="number" min="0" value="${inputVal}"
               onchange="voucherAdjustDirect('${r.code}', this.value)"
               onclick="this.select()"
-              style="width:46px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:12px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);color:inherit;padding:2px 4px;">
-            <button class="adj-btn" onclick="voucherAdjust('${r.code}',+1)">+</button>
+              style="width:46px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;border:1px solid var(--border);border-radius:3px;background:${hasOverride ? 'rgba(79,70,229,0.08)' : 'var(--surface2)'};color:${hasOverride ? 'var(--accent)' : 'var(--text)'};padding:3px 4px;">
+            <button class="adj-btn" onclick="voucherAdjustBtn('${r.code}',+1)">+</button>
           </div>
         </td>
-        <td class="td-qty c-ok">${r.qty}</td>
+        <td class="td-qty c-ok">${finalQty}</td>
       </tr>`;
     }).join('');
 
@@ -971,23 +975,22 @@ function updateHeader() {
 // ══════════════════════════════════════════
 //  EXPORT
 // ══════════════════════════════════════════
-function voucherAdjustDirect(code, value) {
-  const raw = parseInt(value) || 0;
-  // 스캔 기본 수량 + 보정이 0 미만 안 되게
-  const base = buildMatched().find(r => r.code === code);
-  const baseQty = base ? base.qty - (voucherAdj[code] || 0) : 0;
-  voucherAdj[code] = Math.max(-baseQty, raw);
+function voucherAdjustBtn(code, delta) {
+  const current = voucherAdj[code] !== undefined
+    ? voucherAdj[code]
+    : (buildMatched().find(r => r.code === code)?.qty || 0);
+  voucherAdj[code] = Math.max(0, current + delta);
   renderTable();
 }
 
-function voucherAdjust(code, delta) {
-  voucherAdj[code] = (voucherAdj[code] || 0) + delta;
-  // 스캔 수량 + 보정이 0 미만이 되지 않도록
-  const base = buildMatched().find(r => r.code === code);
-  const baseQty = base ? base.qty - (voucherAdj[code] - delta) : 0;
-  if (baseQty + voucherAdj[code] < 0) voucherAdj[code] = -baseQty;
+function voucherAdjustDirect(code, value) {
+  const qty = parseInt(value);
+  if (isNaN(qty) || qty < 0) return;
+  voucherAdj[code] = qty;
   renderTable();
 }
+
+
 
 function exportCSV() {
   const matched = buildMatched();
@@ -1011,8 +1014,8 @@ function exportXLSX() {
   const matched = buildMatched();
   const wb = XLSX.utils.book_new();
   const voucher = [
-    ['상품코드','요청수량','입고수량','요청메모','입고대기','불량입고수량'],
-    ...matched.map(r => [r.code, r.qty, r.qty, null, null, null])
+    ['상품명','사이즈','상품코드','요청수량','입고수량','요청메모','입고대기','불량입고수량'],
+    ...matched.map(r => [r.name, r.size || 'F', r.code, r.qty, r.qty, null, null, null])
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(voucher), '전표처리');
   XLSX.writeFile(wb, `전표처리_${today()}.xlsx`);
