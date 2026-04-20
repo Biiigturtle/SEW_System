@@ -436,7 +436,7 @@ td { padding: 9px 10px; vertical-align: middle; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 .modal {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 12px; padding: 26px; width: 460px; max-width: 92vw;
+  border-radius: 12px; padding: 28px; width: 560px; max-width: 96vw; overflow: visible;
   animation: slideUp 0.2s ease;
 }
 @keyframes slideUp { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -504,11 +504,11 @@ td { padding: 9px 10px; vertical-align: middle; }
 .reg-registered-name { color: var(--text); font-weight: 500; }
 .autocomplete-wrap { position: relative; }
 .autocomplete-list {
-  position: absolute; top: 100%; left: 0; right: 0; z-index: 500;
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 600;
   background: var(--surface); border: 1px solid var(--accent);
   border-top: none; border-radius: 0 0 var(--r) var(--r);
-  max-height: 200px; overflow-y: auto;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  max-height: 160px; overflow-y: auto;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
 }
 .autocomplete-item {
   padding: 9px 12px; cursor: pointer; font-size: 12px;
@@ -897,7 +897,7 @@ td { padding: 9px 10px; vertical-align: middle; }
 </div>
 
 <!-- 미등록 바코드 등록 모달 -->
-<div class="modal-overlay" id="registerModal" style="display:none" onclick="if(event.target===this)closeRegisterModal()">
+<div class="modal-overlay" id="registerModal" style="display:none">
   <div class="modal">
     <div class="modal-title">미등록 바코드 등록</div>
     <div class="reg-note">상품 DB에 없는 바코드입니다. 상품 정보를 입력하면 이번 세션에 즉시 등록됩니다.</div>
