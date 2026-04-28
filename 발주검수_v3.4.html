@@ -669,6 +669,7 @@ td { padding: 9px 10px; vertical-align: middle; }
       <div class="card-icon">📋</div>
       <div class="card-label"><span style="font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0;text-transform:none">pack_data*.xls</span></div>
       <div class="card-title">이지어드민 발주 DB</div>      <div class="card-desc">발주 시스템(.xls) 또는 자체 양식을 업로드합니다.<br>발주 시스템 파일은 컬럼을 자동 인식합니다.</div>
+      <div class="card-desc">발주 시스템(.xls) 또는 자체 양식을 업로드합니다.<br>발주 시스템 파일은 컬럼을 자동 인식합니다.</div>
       <div class="card-format">
         필수 컬럼: <strong>상품명</strong> · <strong>수량</strong><br>
         선택 컬럼: 사이즈 옵션<br>
@@ -1298,7 +1299,7 @@ function startApp() {
   if (orderFileName)   bo.classList.add('ok'); else bo.style.color = 'var(--muted)';
   const _cnt = registeredItems.length;
   if (_cnt > 0) document.getElementById('badge-custom-name').textContent = `등록 DB (${_cnt})`;
-  setTimeout(() => document.getElementById('barcodeInput').focus(), 100);
+  setTimeout(focusScanInput, 100);
   renderAll();
 }
 
@@ -2343,6 +2344,28 @@ function toggleRegisteredPanel() {
   const isHidden = panel.style.display === 'none';
   panel.style.display = isHidden ? 'block' : 'none';
   toggleBar.textContent = isHidden ? '▼ 공유 등록 바코드 닫기' : '▲ 공유 등록 바코드 보기';
+}
+
+// ── 포커스 자동 유지 ──
+// 버튼·input·select·모달 이외 영역 클릭 시 스캔 입력창으로 포커스 복귀
+document.addEventListener('click', e => {
+  const tag = e.target.tagName.toLowerCase();
+  const interactive = ['input','button','select','textarea','a','label'];
+  // 모달이 열려있으면 포커스 뺏지 않음
+  const modalOpen = ['updateModal','registerModal','editModal']
+    .some(id => {
+      const el = document.getElementById(id);
+      return el && el.style.display !== 'none';
+    });
+  if (modalOpen) return;
+  if (interactive.includes(tag)) return;
+  if (e.target.closest('.adj-wrap')) return;
+  document.getElementById('barcodeInput')?.focus();
+});
+
+function focusScanInput() {
+  const inp = document.getElementById('barcodeInput');
+  if (inp) inp.focus();
 }
 
 let _toastTimer;
