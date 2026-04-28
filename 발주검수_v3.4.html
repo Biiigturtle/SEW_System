@@ -1550,6 +1550,7 @@ function undoScan(i) {
   rebuildScanMap();
   renderLog(); renderAll();
   showToast('스캔 취소됨');
+  focusScanInput();
 }
 
 // ══════════════════════════════════════════
@@ -2223,6 +2224,7 @@ function applyRegister() {
     window.fbSaveBarcode(barcode, { name, size, price });
   }
   showToast(`✓ 등록됨: ${name} (${size}) — ${scanCount}회 스캔 합산`);
+  focusScanInput();
 }
 
 // 엔터 키로 등록
@@ -2350,7 +2352,7 @@ function toggleRegisteredPanel() {
 // 버튼·input·select·모달 이외 영역 클릭 시 스캔 입력창으로 포커스 복귀
 document.addEventListener('click', e => {
   const tag = e.target.tagName.toLowerCase();
-  const interactive = ['input','button','select','textarea','a','label'];
+  const interactive = ['input','select','textarea','a','label'];
   // 모달이 열려있으면 포커스 뺏지 않음
   const modalOpen = ['updateModal','registerModal','editModal']
     .some(id => {
