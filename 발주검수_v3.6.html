@@ -1427,6 +1427,13 @@ function soundOk() {
   playTone({ freq: 1800, type: 'sine', duration: 0.08, gain: 0.35, fadeOut: 0.04 });
 }
 
+// 🔤 한글 입력 경고 — 중간 높이 단순 버저 단타
+function soundKorean() {
+  playTone({ freq: 660, type: 'square', duration: 0.12, gain: 0.4, fadeOut: 0.04, delay: 0.00 });
+  playTone({ freq: 440, type: 'square', duration: 0.12, gain: 0.4, fadeOut: 0.04, delay: 0.15 });
+  playTone({ freq: 660, type: 'square', duration: 0.12, gain: 0.4, fadeOut: 0.04, delay: 0.30 });
+}
+
 // ✕ 미등록 바코드 — 낮고 거친 버저 2연타
 function soundError() {
   playTone({ freq: 220, type: 'sawtooth', duration: 0.18, gain: 0.5, fadeOut: 0.02, delay: 0.00 });
@@ -1444,10 +1451,17 @@ function soundWarn() {
 //  SCAN LOGIC
 // ══════════════════════════════════════════
 const input = document.getElementById('barcodeInput');
+
 input.addEventListener('keydown', e => {
   if (e.key === 'Enter') {
     const val = input.value.trim();
-    if (val) processScan(val);
+    if (val) {
+      if (/[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(val)) {
+        soundKorean();
+        return;
+      }
+      processScan(val);
+    }
     input.value = '';
   }
 });
